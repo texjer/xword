@@ -1,0 +1,2434 @@
+openapi: 3.1.0
+
+info:
+  title: Crossword Generator API
+  version: "1.0.0"
+  summary: Search words, find clues, fill grids, and publish puzzles in 24 languages.
+  description: |
+    Use the same crossword tools as
+    [crossword.texs.org](https://crossword.texs.org). You can search words, find
+    clues, fill grids, and publish puzzles.
+
+    ## Authentication
+
+    Send your key as a bearer token:
+
+    ```
+    Authorization: Bearer cw_live_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    ```
+
+    If your platform reserves `Authorization`, use `X-Api-Key` instead:
+
+    ```
+    X-Api-Key: cw_live_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    ```
+
+    Send one header, not both. Create a key in
+    [Dashboard → API](https://crossword.texs.org/dashboard?tab=api).
+
+    A scope controls what a key can do:
+
+    | Scope | Covers |
+    |---|---|
+    | `read` | Search words, find clues, and read or export puzzles |
+    | `solve` | Fill and clean grids, cancel a fill, and create AI clues |
+    | `puzzles:write` | Create, update, delete, and publish puzzles |
+
+    New keys get all three scopes. Remove any your app does not need. A missing
+    scope returns `403 FORBIDDEN_SCOPE`.
+
+    ## Naming
+
+    Solver request fields use snake_case, such as `min_score`. Response fields
+    use camelCase, such as `slotsFilled`.
+
+    ## Grids
+
+    A grid is a list of text rows. Use `.` for an empty cell, `#` for a black
+    cell, and a letter for a fixed cell. Grids must be square and 3 to 23 cells
+    wide. See the `Grid` schema.
+
+    ## Errors
+
+    Errors use `application/problem+json`. Use `code` in your program. The
+    `detail` text is for people and may change.
+
+    ## Rate limits and quotas
+
+    Limits depend on the account plan. Read responses include
+    `X-RateLimit-Limit` and `X-RateLimit-Remaining`. A 429 response includes
+    `Retry-After`. Fill responses include `X-Fill-Quota-Remaining`. A value of
+    `-1` means there is no limit.
+
+    ## Rules for Use
+
+    The Crossword API lets you build, submit, and showcase your puzzles
+    programmatically. You must follow the
+    [Terms of Use](https://crossword.texs.org/terms), and we may turn off API
+    keys for abuse.
+
+    1. **Give credit.** Link to [crossword.texs.org](https://crossword.texs.org)
+       and use the logo shown on the [docs page](https://crossword.texs.org/developers#rules).
+       Printed puzzles must show the logo or a credit line with the URL.
+    2. **Do not impersonate anyone.** The `author` must be you, your site, a pen
+       name, or someone who agreed to be credited.
+    3. **Follow the content rules.** They apply to every field you publish.
+    4. **Do not copy the full data set.** Do not rebuild the word lists or clue
+       collection by making many API calls. See the [data licenses](https://crossword.texs.org/developers#attribution).
+  contact:
+    name: Crossword Generator
+    url: https://crossword.texs.org/developers
+  license:
+    name: Terms of Service
+    url: https://crossword.texs.org/terms
+
+servers:
+  - url: https://crossword.texs.org/api/v1
+    description: Production
+  - url: http://localhost:5555/api/v1
+    description: Local development (next dev --port 5555)
+
+tags:
+  - name: Meta
+    description: Check the service and list languages. No key is needed.
+  - name: Words
+    description: Search and score words in 24 languages.
+  - name: Clues
+    description: Find saved clues or create new AI clues.
+  - name: Solver
+    description: Fill a grid, clean it up, or stop a fill.
+  - name: Puzzles
+    description: Save, publish, and export puzzles.
+
+# Both schemes carry the same key and are accepted on every gated operation.
+# `bearerAuth` is listed first because it is the preferred form; `apiKeyAuth`
+# exists for callers whose platform reserves `Authorization`.
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      summary: Service status
+      description: |
+        Check whether the API and each language index are ready. No key is
+        needed, but requests are limited by IP address.
+
+        This endpoint returns `200` even when the solver is down. In that case,
+        `status` is `"degraded"` and `languages` is empty. Watch the `status`
+        field, not only the HTTP status. The only other response is `429`.
+      tags: [Meta]
+      security: []
+      x-required-scope: null
+      responses:
+        "200":
+          description: |
+            `ok` when the solver is healthy. `degraded` when it is not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+              examples:
+                healthy:
+                  summary: Healthy, English resident
+                  value:
+                    status: ok
+                    version: "1.0.0"
+                    languages:
+                      en: { available: true, loaded: true }
+                      ru: { available: true, loaded: false }
+                      hi: { available: true, loaded: false }
+                degraded:
+                  summary: The solver could not be reached
+                  value:
+                    status: degraded
+                    version: "1.0.0"
+                    languages: {}
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /languages:
+    get:
+      operationId: listLanguages
+      summary: List puzzle languages
+      description: |
+        List every supported language and its main rules. The response shows
+        whether the language is ready and whether it needs a criss-cross grid.
+        It also shows reading direction, `.puz` support, and the shortest answer.
+
+        `pt-BR` is accepted as input but is returned as `pt`. Both forms of
+        Portuguese use the same data. `available: false` means word search and
+        fill will not work for that language.
+
+        No key is needed, but requests are limited by IP address.
+      tags: [Meta]
+      security: []
+      x-required-scope: null
+      responses:
+        "200":
+          description: The language registry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [languages]
+                properties:
+                  languages:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Language"
+              examples:
+                sample:
+                  summary: Three representative entries
+                  value:
+                    languages:
+                      - code: en
+                        name: English
+                        nativeName: English
+                        available: true
+                        crissCrossOnly: false
+                        rtl: false
+                        puzExportable: true
+                        minSlotLength: 3
+                      - code: he
+                        name: Hebrew
+                        nativeName: עברית
+                        available: true
+                        crissCrossOnly: false
+                        rtl: true
+                        puzExportable: false
+                        minSlotLength: 3
+                      - code: ja
+                        name: Japanese
+                        nativeName: 日本語
+                        available: true
+                        crissCrossOnly: true
+                        rtl: false
+                        puzExportable: false
+                        minSlotLength: 2
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /words:
+    get:
+      operationId: searchWords
+      summary: Search words by pattern
+      description: |
+        Search a language's word list. Use `_` or `?` for an unknown letter.
+        Results are sorted by score, highest first.
+
+        Scores run from 0 to 100. A score of 40 or more is usually good for a
+        clean fill. A search returns at most 100 words. You cannot use this
+        endpoint to download the full word list.
+      tags: [Words]
+      x-required-scope: read
+      parameters:
+        - name: pattern
+          in: query
+          required: true
+          description: The slot pattern. `_` or `?` for an unknown cell.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 23
+          example: "C_T"
+        - name: lang
+          in: query
+          description: Puzzle language code.
+          schema:
+            $ref: "#/components/schemas/LanguageCode"
+          example: en
+        - name: min_score
+          in: query
+          description: Drop entries scoring below this.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000
+            default: 0
+          example: 40
+        - name: limit
+          in: query
+          description: Maximum matches to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Matching words, best first.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [words]
+                properties:
+                  words:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WordMatch"
+              examples:
+                threeLetters:
+                  summary: GET /words?pattern=C_T&lang=en&min_score=40
+                  value:
+                    words:
+                      - { word: "COT", score: 90 }
+                      - { word: "CUT", score: 90 }
+                      - { word: "CAT", score: 80 }
+                      - { word: "CDT", score: 50 }
+                      - { word: "CST", score: 50 }
+                      - { word: "CIT", score: 40 }
+                      - { word: "CRT", score: 40 }
+                cyrillic:
+                  summary: GET /words?pattern=Л_НА&lang=ru
+                  value:
+                    words:
+                      - { word: "ЛУНА", score: 70 }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /words/scores:
+    post:
+      operationId: scoreWords
+      summary: Score a batch of words
+      description: |
+        Get a score for each known word. Response keys match the words you sent.
+        Unknown words are left out instead of getting a score of 0. This lets
+        you tell the difference between an unknown word and a weak word.
+      tags: [Words]
+      x-required-scope: read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [words]
+              properties:
+                words:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: string
+                language:
+                  $ref: "#/components/schemas/LanguageCode"
+            examples:
+              basic:
+                value:
+                  words: ["CAT", "ESNE", "ZZTOP"]
+                  language: en
+      responses:
+        "200":
+          description: Score per known word.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scores]
+                properties:
+                  scores:
+                    type: object
+                    description: Word → score. Unknown words are omitted.
+                    additionalProperties:
+                      type: integer
+              examples:
+                basic:
+                  summary: ZZTOP is not in the index, so it is absent
+                  value:
+                    scores:
+                      CAT: 80
+                      ESNE: 25
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /clues/{word}:
+    get:
+      operationId: lookupClues
+      summary: Clues for one answer
+      description: |
+        Find clues for one answer. The best clues come first. Repeated clues are
+        removed.
+      tags: [Clues]
+      x-required-scope: read
+      parameters:
+        - name: word
+          in: path
+          required: true
+          description: The answer. Normalized (uppercased, accents folded per language) server-side.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 23
+          example: SUB
+        - name: language
+          in: query
+          schema:
+            $ref: "#/components/schemas/LanguageCode"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Clues for the answer, best first. An answer with no clues returns an empty list.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clues]
+                properties:
+                  clues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Clue"
+              examples:
+                sub:
+                  summary: GET /clues/SUB?language=en&limit=3
+                  value:
+                    clues:
+                      - { text: "Submarine sandwich", source: "published", pubCount: 118 }
+                      - { text: "Fill-in teacher", source: "published", pubCount: 64 }
+                      - { text: "Stand-in", source: "original", pubCount: 0 }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /clues/bulk:
+    post:
+      operationId: lookupCluesBulk
+      summary: Clues for many answers
+      description: |
+        Find clues for up to 500 answers in one request. The API returns up to
+        five clues per answer. Answers with no clues are left out. Response keys
+        may be uppercased or cleaned up for the language.
+      tags: [Clues]
+      x-required-scope: read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [words]
+              properties:
+                words:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: string
+                language:
+                  $ref: "#/components/schemas/LanguageCode"
+            examples:
+              afterFill:
+                value:
+                  words: ["SUB", "OREO", "QWERTYX"]
+                  language: en
+      responses:
+        "200":
+          description: Clues keyed by normalized answer.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clues]
+                properties:
+                  clues:
+                    type: object
+                    additionalProperties:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/Clue"
+              examples:
+                afterFill:
+                  summary: QWERTYX has no clues, so it is absent
+                  value:
+                    clues:
+                      SUB:
+                        - { text: "Submarine sandwich", source: "published", pubCount: 118 }
+                      OREO:
+                        - { text: "Cookie with a creme center", source: "published", pubCount: 402 }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /clues/generate:
+    post:
+      operationId: generateClues
+      summary: Generate AI clues for an answer
+      description: |
+        Write new clues for one answer with AI. This feature needs a paid plan
+        and the `solve` scope. The Free plan returns `403 MEMBERS_ONLY`.
+
+        Each clue includes a `token` that proves this API made it. This request
+        does not save the clue. A clue may be added to the shared collection
+        after you publish a puzzle that uses it.
+
+        `X-Ai-Clues-Remaining` shows how many AI clue requests are left this
+        month. A value of `-1` means there is no limit.
+      tags: [Clues]
+      x-required-scope: solve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [word]
+              properties:
+                word:
+                  type: string
+                  minLength: 2
+                  maxLength: 23
+                count:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+                  default: 5
+                language:
+                  $ref: "#/components/schemas/LanguageCode"
+            examples:
+              basic:
+                value: { word: "LIGHTHOUSE", count: 3, language: en }
+      responses:
+        "200":
+          description: Freshly written clue candidates.
+          headers:
+            X-Ai-Clues-Remaining:
+              $ref: "#/components/headers/XAiCluesRemaining"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [clues]
+                properties:
+                  clues:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Clue"
+                  remaining:
+                    type: integer
+                    description: AI clues left this month; `-1` for unlimited tiers.
+              examples:
+                basic:
+                  value:
+                    clues:
+                      - text: "Beacon on a rocky point"
+                        source: ai
+                        pubCount: 0
+                        token: "3f1c…"
+                      - text: "Keeper's workplace"
+                        source: ai
+                        pubCount: 0
+                        token: "9ab2…"
+                    remaining: 247
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `FORBIDDEN_SCOPE` (key lacks `solve`), or `MEMBERS_ONLY` (Free tier).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                membersOnly:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#MEMBERS_ONLY"
+                    title: "Members only"
+                    status: 403
+                    code: MEMBERS_ONLY
+                    detail: "AI clue suggestions are a member feature"
+        "429":
+          description: |
+            `AI_QUOTA_REACHED` (monthly allowance spent) or `RATE_LIMITED`.
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+            X-Ai-Clues-Remaining:
+              $ref: "#/components/headers/XAiCluesRemaining"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                quota:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#AI_QUOTA_REACHED"
+                    title: "AI clue quota reached"
+                    status: 429
+                    code: AI_QUOTA_REACHED
+                    detail: "Monthly limit of 250 AI clue generations reached"
+                    limit: 250
+                    remaining: 0
+        "502":
+          $ref: "#/components/responses/UpstreamUnavailable"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /fill:
+    post:
+      operationId: fillGrid
+      summary: Auto-fill a grid
+      description: |
+        Fill the empty cells while keeping all black cells and fixed letters.
+        Most 15×15 grids take 1 to 30 seconds.
+
+        Choose the response with the `Accept` header:
+
+        * `application/json` waits for the final result.
+        * `text/event-stream` sends live `session`, `progress`, `complete`, and
+          `error` events.
+
+        `min_score` sets the word quality goal. The default is 40. The solver
+        may use a lower score when a grid is hard to finish. Check
+        `quality.rough` for those words. Send a rough fill to
+        `POST /fill/improve` to try for cleaner words.
+
+        A fill can return `200` without solving the grid. Check whether
+        `slotsFilled` equals `slotsTotal`. When nothing is filled, `reason`
+        explains why. A server failure returns `502 UPSTREAM_UNAVAILABLE`.
+
+        Free accounts can fill grids up to 13×13. Paid plans can fill up to
+        23×23. A fill or clean-up uses one monthly fill. This is true even when
+        the solver finds no answer. `X-Fill-Quota-Remaining` shows the balance.
+
+        Chinese, Japanese, and Korean need criss-cross grids. The solver cannot
+        fill dense grids in those languages.
+      tags: [Solver]
+      x-required-scope: solve
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          description: "`application/json` (default) or `text/event-stream`."
+          schema:
+            type: string
+            enum: [application/json, text/event-stream]
+            default: application/json
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FillRequest"
+            examples:
+              mini:
+                summary: A 5×5 with two black squares and one theme letter
+                value:
+                  grid:
+                    - "..#.."
+                    - "....."
+                    - "..A.."
+                    - "....."
+                    - "..#.."
+                  min_score: 40
+                  max_time: 25
+                  language: en
+              hebrew:
+                summary: A Hebrew grid (data model stays logical/LTR)
+                value:
+                  grid:
+                    - "...#."
+                    - "....."
+                    - ".#ש.."
+                    - "....."
+                    - ".#..."
+                  language: he
+      responses:
+        "200":
+          description: |
+            The completed fill (JSON), or the progress stream (SSE).
+          headers:
+            X-Fill-Session-Id:
+              $ref: "#/components/headers/XFillSessionId"
+            X-Fill-Quota-Remaining:
+              $ref: "#/components/headers/XFillQuotaRemaining"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FillResult"
+              examples:
+                complete:
+                  summary: The `mini` request above, filled
+                  description: |
+                    This grid has eight answers. The two-cell spaces beside the
+                    black cells are too short to count as English answers.
+                  value:
+                    grid:
+                      - "KD#MC"
+                      - "NINER"
+                      - "OVATE"
+                      - "LEGOS"
+                      - "LR#OT"
+                    slotsFilled: 8
+                    slotsTotal: 8
+                    sessionId: "kKq2x9Wn0ZqQm5Yc1Lr7Hs3T"
+                    quality:
+                      scored: 8
+                      rough: []
+                rough:
+                  summary: A fill the solver had to settle for
+                  description: |
+                    The solver finished, but one word scored below the quality
+                    goal. It appears in `quality.rough`. Send this grid to
+                    `POST /fill/improve` to try again.
+                  value:
+                    grid:
+                      - "IF#JG"
+                      - "MANOR"
+                      - "PIQUE"
+                      - "ERASE"
+                      - "LY#TK"
+                    slotsFilled: 8
+                    slotsTotal: 8
+                    sessionId: "kKq2x9Wn0ZqQm5Yc1Lr7Hs3T"
+                    quality:
+                      scored: 8
+                      rough:
+                        - word: "NQA"
+                          score: 35
+                          row: 1
+                          col: 2
+                          number: 6
+                          direction: down
+                noSolution:
+                  summary: A well-formed grid the solver could not fill
+                  description: |
+                    This still returns `200` because the request worked.
+                    `slotsFilled` is `0`, and `reason` explains the result.
+                  value:
+                    grid:
+                      - "..#.."
+                      - "....."
+                      - "..A.."
+                      - "....."
+                      - "..#.."
+                    slotsFilled: 0
+                    slotsTotal: 8
+                    reason: too_difficult
+                    sessionId: "kKq2x9Wn0ZqQm5Yc1Lr7Hs3T"
+                    quality:
+                      scored: 0
+                      rough: []
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/FillEvent"
+              examples:
+                stream:
+                  summary: The event sequence (each line is one `data:` frame)
+                  value: |
+                    data: {"type":"session","sessionId":"kKq2x9Wn0ZqQm5Yc1Lr7Hs3T"}
+
+                    data: {"type":"progress","filled":2,"total":8,"fill":{"0,0":"K","1,0":"N","2,0":"O","3,0":"L","4,0":"L","0,1":"D","1,1":"I","2,1":"V","3,1":"E","4,1":"R"}}
+
+                    data: {"type":"complete","grid":["KD#MC","NINER","OVATE","LEGOS","LR#OT"],"fill":{"0,0":"K","0,1":"D"},"slotsFilled":8,"slotsTotal":8,"quality":{"scored":8,"rough":[]}}
+        "400":
+          description: |
+            `VALIDATION_ERROR` (bad grid) or `LANGUAGE_UNAVAILABLE`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: |
+            `FORBIDDEN_SCOPE`, or `GRID_SIZE_LOCKED` when the grid is larger than the
+            caller's tier allows.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                gridSize:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#GRID_SIZE_LOCKED"
+                    title: "Grid size locked"
+                    status: 403
+                    code: GRID_SIZE_LOCKED
+                    detail: "15×15 grids require a membership"
+                    maxGridSize: 13
+        "429":
+          description: |
+            `RATE_LIMITED`, `FILL_QUOTA_REACHED` (monthly fills spent), or `SOLVER_BUSY`
+            (too many solves already running; retry shortly).
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+            X-Fill-Quota-Remaining:
+              $ref: "#/components/headers/XFillQuotaRemaining"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                busy:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#SOLVER_BUSY"
+                    title: "Solver busy"
+                    status: 429
+                    code: SOLVER_BUSY
+                    detail: "Too many auto-fill jobs are already running. Try again shortly."
+        "502":
+          description: |
+            `UPSTREAM_UNAVAILABLE`: the solver failed or the stream broke. A
+            normal solve that finds nothing returns `200` with `reason` set.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /fill/improve:
+    post:
+      operationId: improveFill
+      summary: Clean up a filled grid
+      description: |
+        Try to replace weak words with better ones. The black cells do not
+        change. The solver may rebuild much of the fill, so many words can
+        change at once.
+
+        Put theme cells in `locked`. Those cells will not change. Unknown words
+        are treated as your own content and are also left alone.
+
+        `improved: false` means the fill was already clean or the remaining weak
+        words cannot be changed. A clean-up uses one monthly fill.
+      tags: [Solver]
+      x-required-scope: solve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImproveRequest"
+            examples:
+              cleanup:
+                summary: The grid `POST /fill` reported `NQA` in, with the theme `Q` locked
+                value:
+                  grid:
+                    - "IF#JG"
+                    - "MANOR"
+                    - "PIQUE"
+                    - "ERASE"
+                    - "LY#TK"
+                  locked: ["2,2"]
+                  language: en
+                  max_time: 25
+      responses:
+        "200":
+          description: The clean-up result.
+          headers:
+            X-Fill-Quota-Remaining:
+              $ref: "#/components/headers/XFillQuotaRemaining"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImproveResult"
+              examples:
+                improved:
+                  summary: The `cleanup` request above, cleaned
+                  description: |
+                    The result says `replaced: 8` because clean-up rebuilt most
+                    of the fill. Only locked and unknown words had to stay.
+                  value:
+                    improved: true
+                    replaced: 8
+                    grid:
+                      - "PA#PK"
+                      - "EVIAN"
+                      - "TOQUE"
+                      - "AISLE"
+                      - "LD#AS"
+                    quality:
+                      scored: 8
+                      rough: []
+                nothingToDo:
+                  summary: Nothing rough, or the junk is forced
+                  description: |
+                    There is no `grid` because nothing changed. The fill was
+                    already clean, or the locked cells forced the weak word.
+                  value:
+                    improved: false
+                    quality:
+                      scored: 8
+                      rough:
+                        - word: "NQA"
+                          score: 35
+                          row: 1
+                          col: 2
+                          number: 6
+                          direction: down
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: "`FORBIDDEN_SCOPE` or `GRID_SIZE_LOCKED`."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: "`RATE_LIMITED`, `FILL_QUOTA_REACHED`, or `SOLVER_BUSY`."
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /fill/cancel:
+    post:
+      operationId: cancelFill
+      summary: Cancel a running fill
+      description: |
+        Stop a streaming `POST /fill`. Get the ID from the first `session` event.
+        It also appears in the `X-Fill-Session-Id` header.
+
+        A finished or unknown ID still returns `200`. Nothing changes.
+      tags: [Solver]
+      x-required-scope: solve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 128
+            examples:
+              cancel:
+                value: { session_id: "kKq2x9Wn0ZqQm5Yc1Lr7Hs3T" }
+      responses:
+        "200":
+          description: Cancellation recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cancelled, sessionId]
+                properties:
+                  cancelled:
+                    type: boolean
+                  sessionId:
+                    type: string
+              examples:
+                ok:
+                  value: { cancelled: true, sessionId: "kKq2x9Wn0ZqQm5Yc1Lr7Hs3T" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /puzzles:
+    get:
+      operationId: listPuzzles
+      summary: List your puzzles
+      description: |
+        List the account's drafts and published puzzles. The newest edit comes
+        first. This endpoint does not list other people's puzzles.
+      tags: [Puzzles]
+      x-required-scope: read
+      parameters:
+        - name: status
+          in: query
+          description: Filter by lifecycle state.
+          schema:
+            type: string
+            enum: [draft, published]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Your puzzles.
+          headers:
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/XRateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/XRateLimitRemaining"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [puzzles, total]
+                properties:
+                  puzzles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Puzzle"
+                  total:
+                    type: integer
+              examples:
+                oneDraft:
+                  value:
+                    total: 1
+                    puzzles:
+                      - id: "k3n8q1zp"
+                        title: "Coastal Mini"
+                        author: "Tex"
+                        language: en
+                        size: 5
+                        grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                        clues:
+                          across:
+                            "5": "San Francisco footballer, informally"
+                            "7": "Egg-shaped"
+                            "8": "Bricks from Billund"
+                          down:
+                            "1": "Grassy mound"
+                            "2": "One off the high board"
+                            "3": "2017 hashtag movement"
+                            "4": "Wave's high point"
+                            "6": "Pester"
+                        themeWords: ["CREST"]
+                        status: draft
+                        showcaseStatus: null
+                        adultThemes: false
+                        difficulty: null
+                        createdAt: "2026-09-15T10:04:00Z"
+                        updatedAt: "2026-09-15T10:22:31Z"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    post:
+      operationId: createPuzzle
+      summary: Create a puzzle
+      description: |
+        Save a new puzzle to the account. Do not send `size`; the API gets it
+        from the grid. The account plan controls the largest allowed grid.
+
+        A new puzzle is a draft unless you send `publish: true`. To publish, the
+        puzzle needs a title and a clue for every finished answer. If it is not
+        ready, the API returns `400 VALIDATION_ERROR` and saves nothing.
+
+        `publish: true` makes an unlisted public puzzle. It does not submit the
+        puzzle to the showcase. Use `POST /puzzles/{id}/publish` with
+        `submitToShowcase: true` for that. Unlisted puzzles are hidden from
+        search engines unless you set `noIndex: false`.
+
+        Use `Idempotency-Key` to prevent copies when a request is sent twice.
+        Reuse the same value for the same puzzle. A repeat returns the first
+        puzzle with `200` and `Idempotent-Replayed: true`.
+
+        Creating a new puzzle uses one monthly puzzle. Repeats, edits, and
+        publishing are free. `X-Puzzle-Quota-Remaining` shows the balance.
+      tags: [Puzzles]
+      x-required-scope: puzzles:write
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PuzzleInput"
+            examples:
+              draft:
+                summary: A draft, clues still partial
+                value:
+                  title: "Coastal Mini"
+                  author: "Tex"
+                  language: en
+                  grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                  clues:
+                    across: { "5": "San Francisco footballer, informally" }
+                    down: { "1": "Grassy mound" }
+                  themeWords: ["CREST"]
+              publishedUnlisted:
+                summary: Published on creation, so every entry needs a clue
+                value:
+                  title: "Coastal Mini"
+                  author: "Tex"
+                  language: en
+                  grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                  clues:
+                    across:
+                      "5": "San Francisco footballer, informally"
+                      "7": "Egg-shaped"
+                      "8": "Bricks from Billund"
+                    down:
+                      "1": "Grassy mound"
+                      "2": "One off the high board"
+                      "3": "2017 hashtag movement"
+                      "4": "Wave's high point"
+                      "6": "Pester"
+                  themeWords: ["CREST"]
+                  publish: true
+      responses:
+        "200":
+          description: |
+            This `Idempotency-Key` was already used. The API returns the first
+            puzzle and does not read the new request body.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+        "201":
+          description: The stored puzzle.
+          headers:
+            X-Puzzle-Quota-Remaining:
+              $ref: "#/components/headers/XPuzzleQuotaRemaining"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+              examples:
+                created:
+                  summary: The `draft` request above, stored
+                  value:
+                    id: "k3n8q1zp"
+                    title: "Coastal Mini"
+                    author: "Tex"
+                    language: en
+                    size: 5
+                    grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                    clues:
+                      across: { "5": "San Francisco footballer, informally" }
+                      down: { "1": "Grassy mound" }
+                    themeWords: ["CREST"]
+                    status: draft
+                    showcaseStatus: null
+                    adultThemes: false
+                    difficulty: null
+                    createdAt: "2026-09-15T10:04:00Z"
+                    updatedAt: "2026-09-15T10:04:00Z"
+        "400":
+          description: |
+            `VALIDATION_ERROR`. With `publish: true` this also covers the
+            publish-readiness check: a missing title, or an entry with no clue. Nothing
+            is stored when it fails.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                badGrid:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    title: Validation error
+                    status: 400
+                    code: VALIDATION_ERROR
+                    detail: "Grid must be square: row 2 has 6 cells, expected 5"
+                    field: grid
+                notPublishable:
+                  summary: "`publish: true` on a puzzle that is not ready"
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    title: Validation error
+                    status: 400
+                    code: VALIDATION_ERROR
+                    detail: "6 entries need a clue before publishing: 7-across, 8-across, 2-down, 6-down, 3-down, 4-down"
+                    field: clues
+                    missingClues: ["7-across", "8-across", "2-down", "6-down", "3-down", "4-down"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: "`FORBIDDEN_SCOPE` or `GRID_SIZE_LOCKED`."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "413":
+          description: The request body exceeds 1 MB.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          description: |
+            `RATE_LIMITED`, or `PUZZLE_QUOTA_REACHED` when no new puzzles are
+            left this month. The error includes the plan and next step.
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+            X-Puzzle-Quota-Remaining:
+              $ref: "#/components/headers/XPuzzleQuotaRemaining"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                quota:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#PUZZLE_QUOTA_REACHED"
+                    title: "Puzzle quota reached"
+                    status: 429
+                    code: PUZZLE_QUOTA_REACHED
+                    detail: "Monthly limit of 30 new puzzles reached. Editing and publishing existing puzzles is not limited, and an Idempotency-Key replay is free. You are on the Free plan; Starter 200, Partner 600, Patron 2,000 puzzles a month. Upgrade at https://account.texs.org/"
+                    limit: 30
+                    remaining: 0
+                    tier: Free
+                    upgradeUrl: "https://account.texs.org/"
+
+  /puzzles/{id}:
+    parameters:
+      - $ref: "#/components/parameters/PuzzleId"
+    get:
+      operationId: getPuzzle
+      summary: Get one puzzle
+      description: |
+        Get one of your puzzles, or any published puzzle, by ID. Someone else's
+        draft returns `404`. The API does not reveal whether that draft exists.
+      tags: [Puzzles]
+      x-required-scope: read
+      responses:
+        "200":
+          description: The puzzle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+              examples:
+                published:
+                  value:
+                    id: "k3n8q1zp"
+                    title: "Coastal Mini"
+                    author: "Tex"
+                    language: en
+                    size: 5
+                    grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                    clues:
+                      across:
+                        "5": "San Francisco footballer, informally"
+                        "7": "Egg-shaped"
+                        "8": "Bricks from Billund"
+                      down:
+                        "1": "Grassy mound"
+                        "2": "One off the high board"
+                        "3": "2017 hashtag movement"
+                        "4": "Wave's high point"
+                        "6": "Pester"
+                    themeWords: ["CREST"]
+                    status: published
+                    showcaseStatus: approved
+                    adultThemes: false
+                    difficulty: medium
+                    createdAt: "2026-09-15T10:04:00Z"
+                    updatedAt: "2026-09-15T11:00:00Z"
+                    url: "https://crossword.texs.org/puzzle/k3n8q1zp"
+                    embedUrl: "https://crossword.texs.org/embed/k3n8q1zp"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    patch:
+      operationId: updatePuzzle
+      summary: Update a puzzle
+      description: |
+        Change one or more fields on a puzzle you own. Fields you leave out do
+        not change. The API saves the old version first. Editing a published
+        puzzle also runs the safety check again.
+
+        Take care with `clues`: it replaces the full clue set. It does not merge
+        with old clues. If you send `clues`, include every Across and Down clue
+        you want to keep.
+      tags: [Puzzles]
+      x-required-scope: puzzles:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PuzzlePatch"
+            examples:
+              retitle:
+                summary: Retitle without touching the grid
+                value: { title: "Seaside Mini" }
+              clues:
+                summary: Reword 7-Across and 4-Down (the whole clue set is resent)
+                value:
+                  clues:
+                    across:
+                      "5": "San Francisco footballer, informally"
+                      "7": "Shaped like an egg"
+                      "8": "Bricks from Billund"
+                    down:
+                      "1": "Grassy mound"
+                      "2": "One off the high board"
+                      "3": "2017 hashtag movement"
+                      "4": "Top of a swell"
+                      "6": "Pester"
+      responses:
+        "200":
+          description: The updated puzzle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: "`FORBIDDEN_SCOPE` or `GRID_SIZE_LOCKED`."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+    delete:
+      operationId: deletePuzzle
+      summary: Delete a puzzle
+      description: |
+        Permanently delete a puzzle you own. This also deletes its version
+        history. The API cannot undo this action.
+      tags: [Puzzles]
+      x-required-scope: puzzles:write
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /puzzles/{id}/publish:
+    post:
+      operationId: publishPuzzle
+      summary: Publish a puzzle
+      description: |
+        Publish a draft and create its public page and embed URL. Publishing
+        also runs a safety check. The puzzle's clues may be added to the shared
+        clue collection under the Terms of Use.
+
+        The puzzle is unlisted unless you send `submitToShowcase: true`. A
+        person reviews every API showcase request; nothing is listed
+        automatically, so send your best work. An unlisted puzzle is hidden
+        from search engines unless you set `noIndex: false`.
+
+        An account can have up to three puzzles waiting for showcase review. A
+        fourth returns `409 SHOWCASE_QUEUE_FULL` and changes nothing.
+
+        You may publish an already published puzzle again. This updates the
+        optional fields and runs the safety check again. A puzzle already in the
+        review queue keeps its place.
+      tags: [Puzzles]
+      x-required-scope: puzzles:write
+      parameters:
+        - $ref: "#/components/parameters/PuzzleId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                writeup:
+                  type: string
+                  maxLength: 2000
+                  description: |
+                    Note shown on the puzzle page. Text over 2,000 characters is
+                    cut short.
+                showProfile:
+                  type: boolean
+                  description: Link this puzzle from your public author page.
+                noIndex:
+                  type: boolean
+                  description: |
+                    Hide the page from search engines. The share link still works.
+                submitToShowcase:
+                  type: boolean
+                  default: false
+                  description: Enter the public showcase review queue. Off by default.
+            examples:
+              publish:
+                value:
+                  writeup: "My first API-built puzzle."
+                  showProfile: true
+                  submitToShowcase: true
+      responses:
+        "200":
+          description: The published puzzle.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+              examples:
+                published:
+                  summary: Submitted to the showcase, scanned clean
+                  description: |
+                    The safety check passed, so `showcaseStatus` is
+                    `pre_approved`. A blocked term would return `flagged`.
+                  value:
+                    id: "k3n8q1zp"
+                    title: "Coastal Mini"
+                    author: "Tex"
+                    language: en
+                    size: 5
+                    grid: ["KD#MC", "NINER", "OVATE", "LEGOS", "LR#OT"]
+                    clues:
+                      across:
+                        "5": "San Francisco footballer, informally"
+                        "7": "Egg-shaped"
+                        "8": "Bricks from Billund"
+                      down:
+                        "1": "Grassy mound"
+                        "2": "One off the high board"
+                        "3": "2017 hashtag movement"
+                        "4": "Wave's high point"
+                        "6": "Pester"
+                    themeWords: ["CREST"]
+                    status: published
+                    showcaseStatus: pre_approved
+                    adultThemes: false
+                    difficulty: null
+                    writeup: "My first API-built puzzle."
+                    showProfile: true
+                    createdAt: "2026-09-15T10:04:00Z"
+                    updatedAt: "2026-09-15T12:31:00Z"
+                    url: "https://crossword.texs.org/puzzle/k3n8q1zp"
+                    embedUrl: "https://crossword.texs.org/embed/k3n8q1zp"
+        "400":
+          description: |
+            `VALIDATION_ERROR`: the puzzle needs a title and a clue for every
+            finished answer. Unfinished answers do not need clues yet.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                notPublishable:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    title: Validation error
+                    status: 400
+                    code: VALIDATION_ERROR
+                    detail: "1 entry needs a clue before publishing: 6-down"
+                    field: clues
+                    missingClues: ["6-down"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: "`FORBIDDEN_SCOPE` or `GRID_SIZE_LOCKED`."
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            `SHOWCASE_QUEUE_FULL`: three puzzles are already waiting for review.
+            Nothing was changed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                full:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#SHOWCASE_QUEUE_FULL"
+                    title: "Showcase queue full"
+                    status: 409
+                    code: SHOWCASE_QUEUE_FULL
+                    detail: "3 of your puzzles are already waiting for showcase review (limit 3). Publish this one unlisted for now and submit it once one is reviewed; nothing about this request was applied."
+                    limit: 3
+                    queued: 3
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /puzzles/{id}/export:
+    get:
+      operationId: exportPuzzle
+      summary: Export a puzzle
+      description: |
+        Download a puzzle as JSON or as an Across Lite `.puz` file.
+
+        JSON matches `GET /puzzles/{id}`. The `.puz` format only supports some
+        Latin-script languages. Check `puzExportable` in `GET /languages`.
+      tags: [Puzzles]
+      x-required-scope: read
+      parameters:
+        - $ref: "#/components/parameters/PuzzleId"
+        - name: format
+          in: query
+          description: Output format.
+          schema:
+            type: string
+            enum: [json, puz]
+            default: json
+      responses:
+        "200":
+          description: The exported puzzle.
+          headers:
+            Content-Disposition:
+              description: |
+                Set for `puz` only. The filename is a slug of the puzzle's title, e.g.
+                `attachment; filename="coastal-mini.puz"`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Puzzle"
+            application/x-crossword:
+              schema:
+                type: string
+                format: binary
+                description: Across Lite `.puz` binary.
+        "400":
+          description: |
+            `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
+            in ISO-8859-1.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              examples:
+                notPuzExportable:
+                  value:
+                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    title: "Validation error"
+                    status: 400
+                    code: VALIDATION_ERROR
+                    detail: "Russian puzzles cannot be exported as .puz (non-Latin script)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: cw_live_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      description: |
+        The preferred method. Get a key from Dashboard → API and send it as
+        `Authorization: Bearer cw_live_…`. Each operation lists its needed scope
+        in `x-required-scope`.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Use this header only when you cannot set `Authorization`. Send the same
+        API key as `X-Api-Key: cw_live_…`. Do not send both headers.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        A 1 to 255 character value that is unique to this puzzle, such as a UUID
+        or CMS post ID. Reusing it returns the first puzzle instead of making a
+        copy. These values do not expire.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+      example: "post-4821"
+    PuzzleId:
+      name: id
+      in: path
+      required: true
+      description: The puzzle's opaque 8-character id.
+      schema:
+        type: string
+        pattern: "^[a-z0-9]{8}$"
+      example: k3n8q1zp
+
+  headers:
+    XRateLimitLimit:
+      description: Requests allowed in the current minute for this key's tier.
+      schema:
+        type: integer
+      example: 60
+    XRateLimitRemaining:
+      description: Requests left in the current minute.
+      schema:
+        type: integer
+      example: 57
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema:
+        type: integer
+      example: 30
+    XFillQuotaRemaining:
+      description: Fills (including clean-ups) left in the current calendar month; `-1` for unlimited tiers.
+      schema:
+        type: integer
+      example: 183
+    XPuzzleQuotaRemaining:
+      description: New puzzles left in the current calendar month; `-1` for unlimited tiers.
+      schema:
+        type: integer
+      example: 27
+    IdempotentReplayed:
+      description: Present, and `true`, when the response is an earlier request's puzzle rather than a new one.
+      schema:
+        type: string
+        enum: ["true"]
+    XAiCluesRemaining:
+      description: AI clue generations left in the current calendar month; `-1` for unlimited tiers.
+      schema:
+        type: integer
+      example: 247
+    XFillSessionId:
+      description: The solve's session id, for `POST /fill/cancel`.
+      schema:
+        type: string
+      example: kKq2x9Wn0ZqQm5Yc1Lr7Hs3T
+
+  responses:
+    Unauthorized:
+      description: Missing, malformed, unknown or revoked key.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            noKey:
+              value:
+                type: "https://crossword.texs.org/developers/errors#UNAUTHORIZED"
+                title: Unauthorized
+                status: 401
+                code: UNAUTHORIZED
+                detail: "Provide an API key as `Authorization: Bearer cw_live_…`"
+    Forbidden:
+      description: The key is valid but lacks the scope this operation needs.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            scope:
+              value:
+                type: "https://crossword.texs.org/developers/errors#FORBIDDEN_SCOPE"
+                title: Forbidden
+                status: 403
+                code: FORBIDDEN_SCOPE
+                detail: "This key does not carry the `solve` scope"
+                requiredScope: solve
+    NotFound:
+      description: No such puzzle, or it is a draft you do not own.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            missing:
+              value:
+                type: "https://crossword.texs.org/developers/errors#NOT_FOUND"
+                title: Not found
+                status: 404
+                code: NOT_FOUND
+                detail: "No puzzle with id k3n8q1zp"
+    ValidationError:
+      description: The request body or query string did not validate.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            badGrid:
+              value:
+                type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                title: Validation error
+                status: 400
+                code: VALIDATION_ERROR
+                detail: "Grid must be square: row 2 has 6 cells, expected 5"
+                field: grid
+    RateLimited:
+      description: Per-minute rate limit exceeded for this key's tier.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+        X-RateLimit-Limit:
+          $ref: "#/components/headers/XRateLimitLimit"
+        X-RateLimit-Remaining:
+          $ref: "#/components/headers/XRateLimitRemaining"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            limited:
+              value:
+                type: "https://crossword.texs.org/developers/errors#RATE_LIMITED"
+                title: Rate limited
+                status: 429
+                code: RATE_LIMITED
+                detail: "60 requests per minute exceeded"
+                limit: 60
+                remaining: 0
+    UpstreamUnavailable:
+      description: The solver or word-index service could not be reached, or the language index could not be loaded.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            down:
+              value:
+                type: "https://crossword.texs.org/developers/errors#UPSTREAM_UNAVAILABLE"
+                title: Upstream unavailable
+                status: 503
+                code: UPSTREAM_UNAVAILABLE
+                detail: "The solver service is temporarily unavailable"
+
+  schemas:
+    LanguageCode:
+      type: string
+      default: en
+      description: |
+        Puzzle language code. You may send `pt-BR`, but the API returns `pt`.
+        Both use the same Portuguese data.
+      enum:
+        [en, es, fr, de, it, pt, pt-BR, pl, nl, zh, ja, ko, hi, ar, tr, he, id, cs, uk, ro, ru, sv, no, da, hr]
+      example: en
+
+    Language:
+      type: object
+      description: One entry in the language registry.
+      required: [code, name, nativeName, available, crissCrossOnly, rtl, puzExportable, minSlotLength]
+      properties:
+        code:
+          $ref: "#/components/schemas/LanguageCode"
+        name:
+          type: string
+          description: English name.
+          example: Croatian
+        nativeName:
+          type: string
+          description: The language's own name.
+          example: Hrvatski
+        available:
+          type: boolean
+          description: |
+            `true` when word search and fill work for this language.
+        crissCrossOnly:
+          type: boolean
+          description: |
+            `true` for Chinese, Japanese, and Korean. Build these as criss-cross
+            grids. `POST /fill` cannot fill a dense grid for them.
+        rtl:
+          type: boolean
+          description: |
+            `true` for a right-to-left language. The data still starts at column
+            0. Mirror only the display.
+        puzExportable:
+          type: boolean
+          description: "`true` when this language can be saved as a `.puz` file."
+        minSlotLength:
+          type: integer
+          description: |
+            The shortest space that counts as an answer. Usually 3 cells, or 2
+            for Chinese, Japanese, and Korean.
+          example: 3
+
+    Status:
+      type: object
+      required: [status, version, languages]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+          description: API contract version.
+          example: "1.0.0"
+        languages:
+          type: object
+          description: Per-language index state, keyed by language code.
+          additionalProperties:
+            type: object
+            required: [available, loaded]
+            properties:
+              available:
+                type: boolean
+                description: The word database file is present on the solver box.
+              loaded:
+                type: boolean
+                description: |
+                  `true` when the word list is already in memory. If `false`, the
+                  first request may take a few extra seconds.
+
+    Grid:
+      type: array
+      description: |
+        A square grid made of text rows, starting with the top row:
+
+        * `.`: an empty white cell the solver may fill
+        * `#`: a black square
+        * anything else: a fixed letter
+
+        A grid must be 3 to 23 cells wide, with the same number of rows. Some
+        visible letters use more than one Unicode character. Count visible
+        letters with a grapheme tool such as `Intl.Segmenter`, not JavaScript
+        `.length`.
+
+        The API may uppercase or clean up letters for the language. The returned
+        text may not exactly match the bytes you sent.
+      minItems: 3
+      maxItems: 23
+      items:
+        type: string
+        minLength: 1
+      examples:
+        - ["..#..", ".....", "..A..", ".....", "..#.."]
+        - ["ЛУНА.", ".#...", ".....", "...#.", "....."]
+
+    LockedCells:
+      type: array
+      description: |
+        Cells the clean-up must not change. Write each one as `"row,col"`, with
+        counting from 0. Lock every cell in a theme answer to protect the answer.
+      maxItems: 529
+      items:
+        type: string
+        pattern: "^\\d{1,2},\\d{1,2}$"
+      example: ["0,0", "0,1", "0,2"]
+
+    Problem:
+      type: object
+      description: |
+        An RFC 9457 error object. Use `code` in your program. The `detail` text
+        is for people and may change. Some errors include extra fields, such as
+        `limit`, `remaining`, `maxGridSize`, or `requiredScope`.
+
+        Plan limit errors also include the current plan and a link or email for
+        the next step. Show that information to the user.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Link to the documentation for this error code.
+          example: "https://crossword.texs.org/developers/errors#RATE_LIMITED"
+        title:
+          type: string
+          description: Short, human-readable summary of the problem type.
+        status:
+          type: integer
+          description: The HTTP status code, repeated for clients that lose it.
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence.
+        instance:
+          type: string
+          description: Request identifier, when one is available.
+        code:
+          $ref: "#/components/schemas/ProblemCode"
+      additionalProperties: true
+
+    ProblemCode:
+      type: string
+      description: |
+        A stable error name for programs. New codes may be added. If you do not
+        know a code, handle it like any other error with the same HTTP status.
+
+        | Code | Status | Meaning |
+        |---|---|---|
+        | `UNAUTHORIZED` | 401 | No key, or an unknown/revoked one |
+        | `FORBIDDEN_SCOPE` | 403 | Valid key, missing scope |
+        | `GRID_SIZE_LOCKED` | 403 | Grid larger than the tier's `maxGridSize` |
+        | `MEMBERS_ONLY` | 403 | Feature needs a paid membership |
+        | `AI_QUOTA_REACHED` | 429 | Monthly AI clue allowance spent |
+        | `FILL_QUOTA_REACHED` | 429 | Monthly fill allowance spent |
+        | `PUZZLE_QUOTA_REACHED` | 429 | Monthly new-puzzle allowance spent |
+        | `SHOWCASE_QUEUE_FULL` | 409 | Three puzzles already waiting for showcase review |
+        | `RATE_LIMITED` | 429 | Per-minute limit exceeded |
+        | `SOLVER_BUSY` | 429 | Too many solves running; retry shortly |
+        | `LANGUAGE_UNAVAILABLE` | 400 / 503 | Unknown code, or its index could not be loaded |
+        | `VALIDATION_ERROR` | 400 | Request body or query string is invalid |
+        | `NOT_FOUND` | 404 | No such resource, or not yours to see |
+        | `UPSTREAM_UNAVAILABLE` | 502 / 503 | Solver or storage unreachable |
+      enum:
+        - UNAUTHORIZED
+        - FORBIDDEN_SCOPE
+        - GRID_SIZE_LOCKED
+        - MEMBERS_ONLY
+        - AI_QUOTA_REACHED
+        - FILL_QUOTA_REACHED
+        - PUZZLE_QUOTA_REACHED
+        - SHOWCASE_QUEUE_FULL
+        - RATE_LIMITED
+        - SOLVER_BUSY
+        - LANGUAGE_UNAVAILABLE
+        - VALIDATION_ERROR
+        - NOT_FOUND
+        - UPSTREAM_UNAVAILABLE
+
+    WordMatch:
+      type: object
+      description: One entry from a word index.
+      required: [word, score]
+      properties:
+        word:
+          type: string
+          description: The entry, normalized for its language.
+          example: CAT
+        score:
+          type: integer
+          description: |
+            Word quality from 0 to 100. A score of 40 or more is usually good
+            for a clean fill.
+          example: 80
+
+    Clue:
+      type: object
+      description: One clue from the corpus, or a fresh candidate from `POST /clues/generate`.
+      required: [text, source]
+      properties:
+        text:
+          type: string
+          maxLength: 150
+          description: The clue itself.
+          example: Submarine sandwich
+        source:
+          type: string
+          enum: [published, dictionary, original, ai]
+          description: |
+            Where the clue came from: `published`, `dictionary`, `original`, or
+            `ai`. Only a new, unsaved `ai` clue includes a `token`.
+          example: published
+        pubCount:
+          type: integer
+          description: |
+            How many times a published clue appeared in print. Other clue types
+            return `0`.
+          example: 118
+        token:
+          type: string
+          description: |
+            Proof that this API created a new AI clue. Keep it with the clue if
+            you publish the puzzle. Saved clues leave this field out.
+
+    RoughEntry:
+      type: object
+      description: |
+        A solver word with a score below 40. Words you placed, locked, or added
+        yourself do not appear here.
+      required: [word, score, row, col, number, direction]
+      properties:
+        word:
+          type: string
+          example: ESNE
+        score:
+          type: integer
+          example: 25
+        row:
+          type: integer
+          description: Zero-based row of the entry's first cell.
+        col:
+          type: integer
+          description: Zero-based column of the entry's first cell.
+        number:
+          type: integer
+          description: The clue number at that cell.
+        direction:
+          type: string
+          enum: [across, down]
+
+    FillQuality:
+      type: object
+      description: |
+        A report on the fill. `scored` is the number of words the API checked.
+        `rough` lists weak words, worst first. An empty list means the fill is
+        clean. Use `POST /fill/improve` when the list is not empty.
+      required: [scored, rough]
+      properties:
+        scored:
+          type: integer
+          example: 76
+        rough:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoughEntry"
+
+    FillRequest:
+      type: object
+      required: [grid]
+      properties:
+        grid:
+          $ref: "#/components/schemas/Grid"
+        min_score:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          default: 40
+          description: |
+            Word quality goal. The default is 40. The solver may use lower scores
+            when a grid is hard to finish. Check `quality.rough` after the fill.
+        max_time:
+          type: number
+          minimum: 1
+          maximum: 30
+          default: 25
+          description: |
+            How many seconds the solver may work. The maximum is 30 seconds.
+        language:
+          $ref: "#/components/schemas/LanguageCode"
+        try_hard_grid:
+          type: boolean
+          default: false
+          description: |
+            Keep trying until `max_time` ends. Use this when a grid you know is
+            possible returns `too_difficult`. Hard grids may use the full time.
+
+    ImproveRequest:
+      type: object
+      required: [grid]
+      properties:
+        grid:
+          $ref: "#/components/schemas/Grid"
+        locked:
+          $ref: "#/components/schemas/LockedCells"
+        language:
+          $ref: "#/components/schemas/LanguageCode"
+        max_time:
+          type: number
+          minimum: 1
+          maximum: 30
+          default: 25
+          description: Wall-clock seconds for the clean-up pass.
+
+    FillResult:
+      type: object
+      description: |
+        The fill result. Check whether `slotsFilled` equals `slotsTotal`. A
+        valid request can return `200` even when the solver found no fill.
+        Server failures return `502`.
+      required: [grid, slotsFilled, slotsTotal, quality]
+      properties:
+        grid:
+          $ref: "#/components/schemas/Grid"
+        slotsFilled:
+          type: integer
+          description: Entries the solver placed.
+        slotsTotal:
+          type: integer
+          description: |
+            Entries the grid has. Equal to `slotsFilled` on a complete fill; a smaller
+            `slotsFilled` is a partial.
+        quality:
+          $ref: "#/components/schemas/FillQuality"
+        reason:
+          type: string
+          enum: [too_difficult, no_solution, cancelled]
+          description: |
+            Present when no cells were filled. `too_difficult` means the solver
+            stopped early. `no_solution` means time ran out. `cancelled` means
+            a cancel request stopped the fill.
+        sessionId:
+          type: string
+          description: Also returned in `X-Fill-Session-Id`. Usable with `POST /fill/cancel`.
+
+    ImproveResult:
+      type: object
+      description: |
+        The clean-up result. `improved: false` with no `grid` means nothing
+        changed. The fill was already clean, or locked cells forced the weak word.
+      required: [improved, quality]
+      properties:
+        improved:
+          type: boolean
+        replaced:
+          type: integer
+          description: How many entries changed. Present when `improved` is true.
+        grid:
+          $ref: "#/components/schemas/Grid"
+        quality:
+          $ref: "#/components/schemas/FillQuality"
+
+    FillEvent:
+      description: |
+        One event from a streaming fill. Events arrive in this order:
+        `session`, zero or more `progress` events, then `complete` or `error`.
+        The first event includes the ID needed to cancel the fill.
+      oneOf:
+        - $ref: "#/components/schemas/FillSessionEvent"
+        - $ref: "#/components/schemas/FillProgressEvent"
+        - $ref: "#/components/schemas/FillCompleteEvent"
+        - $ref: "#/components/schemas/FillErrorEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          session: "#/components/schemas/FillSessionEvent"
+          progress: "#/components/schemas/FillProgressEvent"
+          complete: "#/components/schemas/FillCompleteEvent"
+          error: "#/components/schemas/FillErrorEvent"
+
+    FillSessionEvent:
+      type: object
+      required: [type, sessionId]
+      properties:
+        type:
+          type: string
+          const: session
+        sessionId:
+          type: string
+          example: kKq2x9Wn0ZqQm5Yc1Lr7Hs3T
+
+    CellLetters:
+      type: object
+      description: Letters keyed by `"row,col"` (zero-based).
+      additionalProperties:
+        type: string
+      example: { "0,0": "S", "0,1": "P", "0,2": "A" }
+
+    FillProgressEvent:
+      type: object
+      description: |
+        The solver's best grid so far. A later event may show fewer filled cells
+        because the solver backed up. Always display the newest event.
+      required: [type, filled, total, fill]
+      properties:
+        type:
+          type: string
+          const: progress
+        filled:
+          type: integer
+        total:
+          type: integer
+        fill:
+          $ref: "#/components/schemas/CellLetters"
+
+    FillCompleteEvent:
+      type: object
+      required: [type, grid, slotsFilled, slotsTotal, quality]
+      properties:
+        type:
+          type: string
+          const: complete
+        grid:
+          $ref: "#/components/schemas/Grid"
+        fill:
+          $ref: "#/components/schemas/CellLetters"
+        slotsFilled:
+          type: integer
+        slotsTotal:
+          type: integer
+        quality:
+          $ref: "#/components/schemas/FillQuality"
+
+    FillErrorEvent:
+      type: object
+      description: |
+        The fill stopped. Use `reason` to learn why: `too_difficult`,
+        `no_solution`, `cancelled`, or `internal`.
+      required: [type, reason]
+      properties:
+        type:
+          type: string
+          const: error
+        reason:
+          type: string
+          enum: [too_difficult, no_solution, cancelled, internal]
+        message:
+          type: string
+          description: Human-readable detail. English only; do not show it to end users verbatim.
+
+    ShowcaseStatus:
+      type: [string, "null"]
+      description: |
+        The puzzle's showcase review state. `null` means it was not submitted.
+        A normal review moves from `pending` to `pre_approved`, then to
+        `approved`. A blocked word moves it to `flagged` for a person to check.
+      enum: [pending, pre_approved, flagged, approved, rejected, null]
+
+    Difficulty:
+      type: [string, "null"]
+      readOnly: true
+      description: |
+        How hard the puzzle is to solve. The rating looks at clue style and word
+        difficulty. Drafts return `null`. A new publish may also return `null`
+        while the rating is being made. Editing clues makes a new rating.
+      enum: [easy, medium, hard, expert, null]
+
+    ClueMap:
+      type: object
+      description: |
+        Clue text keyed by clue number. Across and Down use the numbers printed
+        on the grid.
+      additionalProperties:
+        type: string
+      example: { "1": "Massage retreat", "4": "Toward" }
+
+    Puzzle:
+      type: object
+      description: |
+        A saved puzzle. `size` comes from `grid` and cannot be changed directly.
+      required:
+        [id, title, author, language, size, grid, clues, themeWords, status, showcaseStatus, adultThemes, difficulty, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z0-9]{8}$"
+          example: k3n8q1zp
+        title:
+          type: string
+          maxLength: 200
+        author:
+          type: string
+          maxLength: 100
+          description: The name printed on the puzzle. It does not have to match the account name.
+        language:
+          $ref: "#/components/schemas/LanguageCode"
+        size:
+          type: integer
+          minimum: 3
+          maximum: 23
+          readOnly: true
+        grid:
+          $ref: "#/components/schemas/Grid"
+        clues:
+          type: object
+          required: [across, down]
+          properties:
+            across:
+              $ref: "#/components/schemas/ClueMap"
+            down:
+              $ref: "#/components/schemas/ClueMap"
+        themeWords:
+          type: array
+          description: Theme answers to highlight on the puzzle page.
+          items:
+            type: string
+        status:
+          type: string
+          enum: [draft, published]
+        showcaseStatus:
+          $ref: "#/components/schemas/ShowcaseStatus"
+        adultThemes:
+          type: boolean
+          readOnly: true
+          description: |
+            `true` when the safety check found adult themes. The public page has
+            an age check, and the embed will not load. Add the same protection
+            if you show the puzzle on your own site.
+        difficulty:
+          $ref: "#/components/schemas/Difficulty"
+        writeup:
+          type: string
+          description: Constructor's note shown on the puzzle page.
+        showProfile:
+          type: boolean
+          description: Whether this puzzle is linked from the author's public page.
+        noIndex:
+          type: boolean
+          description: Author asked search engines to skip the puzzle page.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        url:
+          type: string
+          format: uri
+          readOnly: true
+          description: Public puzzle page. Present once `status` is `published`.
+        embedUrl:
+          type: string
+          format: uri
+          readOnly: true
+          description: Chrome-less frame for embedding. Present once `status` is `published`.
+
+    PuzzleInput:
+      type: object
+      description: |
+        A new puzzle. Do not send `size`; it comes from the grid. The request
+        body can be up to 1 MB.
+      required: [title, grid]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        author:
+          type: string
+          maxLength: 100
+        language:
+          $ref: "#/components/schemas/LanguageCode"
+        grid:
+          $ref: "#/components/schemas/Grid"
+        clues:
+          type: object
+          properties:
+            across:
+              $ref: "#/components/schemas/ClueMap"
+            down:
+              $ref: "#/components/schemas/ClueMap"
+        themeWords:
+          type: array
+          items:
+            type: string
+        writeup:
+          type: string
+          maxLength: 2000
+          description: |
+            Note from the puzzle maker. Text over 2,000 characters is cut short.
+        showProfile:
+          type: boolean
+        noIndex:
+          type: boolean
+        publish:
+          type: boolean
+          default: false
+          description: |
+            Create a public, unlisted puzzle. The puzzle needs a title and a clue
+            for every finished answer. An invalid puzzle is not saved. Use
+            `POST /puzzles/{id}/publish` to ask for showcase review.
+
+    PuzzlePatch:
+      type: object
+      description: |
+        Send only the fields you want to change. Other fields stay the same.
+        The exception is `clues`: sending it replaces the full clue set.
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        author:
+          type: string
+          maxLength: 100
+        language:
+          $ref: "#/components/schemas/LanguageCode"
+        grid:
+          $ref: "#/components/schemas/Grid"
+        clues:
+          type: object
+          properties:
+            across:
+              $ref: "#/components/schemas/ClueMap"
+            down:
+              $ref: "#/components/schemas/ClueMap"
+        themeWords:
+          type: array
+          items:
+            type: string
+        writeup:
+          type: string
+          maxLength: 2000
+          description: |
+            Note from the puzzle maker. Text over 2,000 characters is cut short.
+        showProfile:
+          type: boolean
+        noIndex:
+          type: boolean

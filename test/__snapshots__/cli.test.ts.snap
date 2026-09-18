@@ -1,0 +1,84 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`help output > fill help is stable 1`] = `
+"xword fill <grid.txt|->
+
+  Auto-fill a grid. Spends one unit of the monthly fill quota.
+
+  The grid file is one row per line: \`.\` empty, \`#\` black, anything else a
+  fixed letter the solver must keep. \`-\` reads the grid from stdin.
+
+  --stream renders progress as the solver works, using the SSE response.
+  --lock is a pre-flight check, not a request field: POST /fill has no
+  \`locked\` list because every letter already in the grid is held anyway, so
+  --lock verifies that the cells you meant to protect really do carry one.
+
+Options
+  --lang <code>           Puzzle language code (default en).
+  --min-score <n>         Quality floor for solver-chosen entries (default 40).
+  --max-time <sec>        Wall-clock seconds the solver may spend (default 25).
+  --try-hard              Skip the hopeless-grid checks and use the whole time budget.
+  --lock <r,c>            Assert this cell already carries a letter. Repeatable.
+  --stream                Stream progress (SSE) instead of blocking.
+  --out <file>            Write the filled grid here.
+
+Global options
+  --json                  Emit machine-readable JSON instead of prose.
+  --base <url>            API base URL. Overrides CROSSWORD_API_BASE and the stored value.
+  --quiet                 Suppress progress and hints; keep results.
+  --help                  Show help for this command.
+"
+`;
+
+exports[`help output > top-level help is stable 1`] = `
+"xword 0.1.0 — the Crossword Generator CLI
+
+Usage
+  xword <command> [args] [--flags]
+
+Account
+  login            Store an API key in the OS config directory.
+  logout           Delete the stored API key.
+  status           Service health and which language indexes are resident.
+
+Lookup
+  languages        List puzzle languages and their constraints.
+  words            Search a word index by pattern (\`_\` or \`?\` is a wildcard).
+  clues            Corpus clues for one answer, best first.
+  scores           Dictionary score for each word the index knows.
+
+Building
+  pattern          Generate a symmetric black-square pattern. Runs locally.
+  fill             Auto-fill a grid. Spends one unit of the monthly fill quota.
+  improve          Clean up a filled grid. Spends one unit of the monthly fill quota.
+  generate-clues   Write fresh AI clues. Members only; spends the AI clue allowance.
+
+Puzzles
+  puzzles list     List your puzzles, newest edit first.
+  puzzles get      Fetch one puzzle.
+  puzzles create   Create a puzzle from a JSON document.
+  puzzles update   PATCH a puzzle. Omitted fields are left alone.
+  puzzles delete   Permanently delete a puzzle you own.
+  puzzles publish  Publish a draft, minting its public and embed URLs.
+  export           Download a puzzle as JSON or Across Lite .puz.
+
+Integrations
+  mcp              Run the MCP server on stdio, for Claude Code, Cursor and friends.
+
+Global options
+  --json                  Emit machine-readable JSON instead of prose.
+  --base <url>            API base URL. Overrides CROSSWORD_API_BASE and the stored value.
+  --quiet                 Suppress progress and hints; keep results.
+  --version               Print the xword version.
+  --help                  Show help for this command.
+
+Authentication
+  xword login                 store a key (mode 0600, OS config dir)
+  CROSSWORD_API_KEY=cw_live_… overrides the stored key
+  CROSSWORD_API_BASE=…        point at another deployment
+
+  status and languages need no key. Everything else does.
+
+Docs: https://crossword.texs.org/developers
+"
+`;

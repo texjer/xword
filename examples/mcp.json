@@ -1,0 +1,29 @@
+{
+  "$comment": [
+    "Crossword Generator MCP server — stdio.",
+    "Copy the `mcpServers` object into your client's config:",
+    "  Claude Desktop  ~/Library/Application Support/Claude/claude_desktop_config.json (macOS)",
+    "                  %APPDATA%\\Claude\\claude_desktop_config.json (Windows)",
+    "  Cursor          ~/.cursor/mcp.json, or .cursor/mcp.json in a project",
+    "  Claude Code     .mcp.json in the project root (or: claude mcp add crossword",
+    "                  -e CROSSWORD_API_KEY=cw_live_... -- npx -y xword mcp)",
+    "",
+    "Mint a key at https://crossword.texs.org -> Account -> API keys. Without one,",
+    "only get_status and list_languages work. CROSSWORD_API_BASE is optional and",
+    "only needed to point at a non-production deployment.",
+    "",
+    "Quota: fill_grid and improve_fill each spend one unit of the monthly fill",
+    "allowance whether or not they succeed; generate_clues is members-only and",
+    "spends the monthly AI-clue allowance, one unit per answer. Everything else",
+    "is free beyond a per-minute rate limit."
+  ],
+  "mcpServers": {
+    "crossword": {
+      "command": "npx",
+      "args": ["-y", "xword", "mcp"],
+      "env": {
+        "CROSSWORD_API_KEY": "cw_live_REPLACE_ME"
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# `files` in package.json is the whitelist; this only guards the odd case where
+# a tool ignores it.
+src/
+test/
+scripts/
+tsconfig.json
+tsup.config.ts
+vitest.config.ts

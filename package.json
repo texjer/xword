@@ -1,0 +1,70 @@
+{
+  "name": "xword",
+  "version": "0.1.0",
+  "description": "TypeScript client, CLI and MCP server for the Crossword Generator API \u2014 word search, clue corpus, grid autofill and puzzle publishing in 24 languages.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Tex Jernigan",
+  "homepage": "https://crossword.texs.org/developers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/texjer/xword.git"
+  },
+  "bugs": {
+    "url": "https://github.com/texjer/xword/issues"
+  },
+  "keywords": [
+    "crossword",
+    "puzzle",
+    "cli",
+    "api",
+    "sdk",
+    "puz",
+    "mcp"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "xword": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "gen": "openapi-typescript openapi.yaml --default-non-nullable false -o src/types.gen.ts",
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "scripts/sync-upstream.sh --check && npm run gen && npm run build && npm test",
+    "sync": "scripts/sync-upstream.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "openapi-typescript": "^7.9.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.6.5"
+  }
+}
