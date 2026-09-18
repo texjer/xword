@@ -31,7 +31,7 @@ Global options
 `;
 
 exports[`help output > top-level help is stable 1`] = `
-"xword 0.1.0 — the Crossword Generator CLI
+"xword 0.1.2 — the Crossword Generator CLI
 
 Usage
   xword <command> [args] [--flags]
@@ -60,7 +60,7 @@ Puzzles
   puzzles update   PATCH a puzzle. Omitted fields are left alone.
   puzzles delete   Permanently delete a puzzle you own.
   puzzles publish  Publish a draft, minting its public and embed URLs.
-  export           Download a puzzle as JSON or Across Lite .puz.
+  export           Download a puzzle as JSON, Across Lite .puz, or a playable HTML page.
 
 Integrations
   mcp              Run the MCP server on stdio, for Claude Code, Cursor and friends.

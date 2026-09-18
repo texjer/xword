@@ -62,6 +62,7 @@ xword improve filled.txt --out clean.txt      # swap the obscure entries out
 xword puzzles create puzzle.json              # save it
 xword puzzles publish k3n8q1zp                # mint the public + embed URLs
 xword export k3n8q1zp --puz --out mine.puz    # Across Lite
+xword export k3n8q1zp --html --out mine.html  # one playable page for your own site
 ```
 
 `scripts/cli-walkthrough.sh` runs that whole journey end to end against a
@@ -128,7 +129,7 @@ to protect really do carry a letter.
 | `xword puzzles update <id> <patch.json\|->` | PATCH a subset of fields; omitted ones are left alone. |
 | `xword puzzles delete <id> [--yes]` | Permanent, history included. |
 | `xword puzzles publish <id> [--showcase] [--writeup] [--show-profile] [--no-index]` | Mint the public and embed URLs. |
-| `xword export <id> [--puz\|--json] [--out]` | Across Lite binary, or the puzzle document. |
+| `xword export <id> [--puz\|--html\|--json] [--out]` | Across Lite binary, a self-contained HTML page, or the puzzle document. |
 
 Publishing is **unlisted by default**. `--showcase` opts into the public
 showcase review queue — a human reads those, so the CLI does not enter it on
@@ -236,7 +237,9 @@ One method per operation in the spec:
 
 `fillGrid` and `improveFill` accept either a bare grid or the full request
 object. `exportPuzzle` returns the `Puzzle` for `format: "json"` and
-`{ data, filename }` for `format: "puz"`.
+`{ data, filename }` for `format: "puz"` (bytes) and `format: "html"` (a
+string: one self-contained playable page to host on your own site, so the
+clues sit in your page rather than an iframe).
 
 Types are generated from `openapi.yaml` (`npm run gen`), so a contract change
 shows up as a type error rather than a runtime surprise. The same spec is served
@@ -292,8 +295,8 @@ Re-exported from the web constructor, so there is one implementation of each:
 * `ALPHABET_CONFIGS`, `normalizePuzzleText`, `isRtlLanguage`,
   `isCrissCrossOnlyLanguage`, `minSlotLength`, `getPuzzleUnits`
 
-HTML export is not here: it reads the web app's Zustand store, so it stays a
-web-app feature until that dependency is untangled.
+HTML export is not built locally: the server renders it
+(`exportPuzzle(id, { format: "html" })`, `xword export --html`).
 
 Known limit, inherited from the shared generator: `generateAmericanPattern`
 gives up outside roughly 10–18 cells a side and returns an all-white grid

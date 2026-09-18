@@ -280,7 +280,6 @@ function embedFor(origin: string, puzzle: Puzzle): string {
   return embedSnippet({
     origin,
     embedPath: `/embed/${puzzle.id}`,
-    puzzlePath: `/puzzle/${puzzle.id}`,
     puzzleTitle: puzzle.title,
     size: puzzle.size,
     options: { scheme: "auto", showTitle: true, showFooter: true },
@@ -1072,7 +1071,10 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
       title: "Export a puzzle",
       description:
         "Download a puzzle in a solver-readable format. Free.\n\n" +
-        "`json` returns the puzzle document. `puz` returns the classic Across Lite " +
+        "`json` returns the puzzle document. `html` returns one self-contained " +
+        "playable page (grid, clues, small player, no external requests) as text, " +
+        "for hosting on the user's own site so the clues live in their page rather " +
+        "than an iframe; it needs a full grid with every entry clued. `puz` returns the classic Across Lite " +
         "binary **base64-encoded**, because stdio MCP cannot hand back a file — " +
         "decode it yourself and write the bytes (`base64 -d`, or " +
         "`Buffer.from(data, \"base64\")`) using the `filename` given. The .puz writer " +
@@ -1081,7 +1083,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
         "list_languages first.",
       inputSchema: {
         id: z.string().min(1),
-        format: z.enum(["json", "puz"]).default("json"),
+        format: z.enum(["json", "puz", "html"]).default("json"),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
@@ -1089,6 +1091,13 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
       if (format === "json") {
         const puzzle = await client.exportPuzzle(id, { format: "json" });
         return result(`${puzzle.title} as JSON.`, puzzle);
+      }
+      if (format === "html") {
+        const { data, filename } = await client.exportPuzzle(id, { format: "html" });
+        return result(`${data.length} characters of HTML. Save as ${filename}.`, {
+          filename,
+          data,
+        });
       }
       const { data, filename } = await client.exportPuzzle(id, { format: "puz" });
       return result(

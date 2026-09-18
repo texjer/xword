@@ -17,6 +17,7 @@ export {
   type RequestOptions,
   type ResponseMeta,
   type PuzExportResult,
+  type HtmlExportResult,
   // Contract types
   type LanguageCode,
   type Language,

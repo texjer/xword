@@ -300,9 +300,13 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: "export",
     args: "<id>",
-    summary: "Download a puzzle as JSON or Across Lite .puz.",
+    summary: "Download a puzzle as JSON, Across Lite .puz, or a playable HTML page.",
     flags: {
       puz: { type: "boolean", describe: "Across Lite binary (Latin scripts only)." },
+      html: {
+        type: "boolean",
+        describe: "One playable HTML file to host on your own site (needs a full, clued grid).",
+      },
       json: { type: "boolean", describe: "The Puzzle document (default)." },
       out: {
         type: "string",

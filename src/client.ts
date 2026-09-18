@@ -67,6 +67,12 @@ export interface PuzExportResult {
   filename: string;
 }
 
+/** The self-contained HTML page plus the filename the server suggested. */
+export interface HtmlExportResult {
+  data: string;
+  filename: string;
+}
+
 export const DEFAULT_BASE_URL = "https://crossword.texs.org/api/v1";
 
 export interface CrosswordClientOptions {
@@ -98,7 +104,7 @@ export interface ResponseMeta {
   sessionId?: string;
 }
 
-const PACKAGE_VERSION = "0.1.0";
+const PACKAGE_VERSION = "0.1.2";
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -530,10 +536,11 @@ export class CrosswordClient {
   }
 
   /**
-   * `GET /puzzles/{id}/export` — the `Puzzle` document, or the Across Lite
-   * binary. `.puz` is single-byte ISO-8859-1, so a language whose
-   * `puzExportable` is `false` returns `400 VALIDATION_ERROR` instead of a
-   * corrupt file.
+   * `GET /puzzles/{id}/export` — the `Puzzle` document, the Across Lite
+   * binary, or a self-contained HTML page to host yourself. `.puz` is
+   * single-byte ISO-8859-1, so a language whose `puzExportable` is `false`
+   * returns `400 VALIDATION_ERROR` instead of a corrupt file; `html` needs a
+   * full grid with every entry clued and returns the same error otherwise.
    */
   async exportPuzzle(
     id: string,
@@ -545,30 +552,31 @@ export class CrosswordClient {
   ): Promise<PuzExportResult>;
   async exportPuzzle(
     id: string,
-    options: { format?: "json" | "puz" } & RequestOptions = {}
-  ): Promise<Puzzle | PuzExportResult> {
+    options: { format: "html" } & RequestOptions
+  ): Promise<HtmlExportResult>;
+  async exportPuzzle(
+    id: string,
+    options: { format?: "json" | "puz" | "html" } & RequestOptions = {}
+  ): Promise<Puzzle | PuzExportResult | HtmlExportResult> {
     const format = options.format ?? "json";
+    const accept = { json: "application/json", puz: "application/x-crossword", html: "text/html" }[format];
     const response = await this.request(
       "GET",
       `/puzzles/${encodeURIComponent(id)}/export`,
-      {
-        query: { format },
-        accept: format === "puz" ? "application/x-crossword" : "application/json",
-        retryable: true,
-        signal: options.signal,
-      }
+      { query: { format }, accept, retryable: true, signal: options.signal }
     );
     if (format === "json") return this.json<Puzzle>(response);
-    const data = new Uint8Array(await response.arrayBuffer());
-    return { data, filename: filenameFrom(response.headers, id) };
+    const filename = filenameFrom(response.headers, id, format);
+    if (format === "html") return { data: await response.text(), filename };
+    return { data: new Uint8Array(await response.arrayBuffer()), filename };
   }
 }
 
 /** Pull the filename out of `Content-Disposition`, falling back to the id. */
-function filenameFrom(headers: Headers, id: string): string {
+function filenameFrom(headers: Headers, id: string, ext: string): string {
   const disposition = headers.get("content-disposition") ?? "";
   const star = /filename\*=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
   if (star) return decodeURIComponent(star[1]);
   const plain = /filename="?([^";]+)"?/i.exec(disposition);
-  return plain ? plain[1] : `${id}.puz`;
+  return plain ? plain[1] : `${id}.${ext}`;
 }

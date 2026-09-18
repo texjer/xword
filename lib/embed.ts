@@ -11,13 +11,18 @@ export interface EmbedOptions {
   scheme: EmbedScheme;
   /** Title bar (title + author). Hiding it is a member feature. */
   showTitle: boolean;
-  /** The "Made with … / Open full puzzle" footer. Hiding it is a member feature. */
+  /**
+   * The "Made with …" caption under the iframe. Hiding it is a member
+   * feature. The caption is plain HTML in the host page (see `embedCaption`),
+   * not part of the frame, so this never reaches the frame URL — the member
+   * simply gets a snippet without the line.
+   */
   showFooter: boolean;
 }
 
-/** Both hide flags need the puzzle's customize key (see lib/embedKey.ts). */
+/** Hiding the title bar needs the puzzle's customize key (see lib/embedKey.ts). */
 export function embedNeedsKey(options: EmbedOptions): boolean {
-  return !options.showTitle || !options.showFooter;
+  return !options.showTitle;
 }
 
 export type EmbedMessage =
@@ -45,7 +50,6 @@ export function postEmbedMessage(message: EmbedMessage) {
 export type EmbedSearchParams = {
   scheme?: string | string[];
   title?: string | string[];
-  footer?: string | string[];
   k?: string | string[];
 };
 
@@ -56,15 +60,16 @@ function first(v: string | string[] | undefined): string | undefined {
 /**
  * Parse the embed route's search params into options (unknown values →
  * defaults). `keyValid` is whether the `k` param verified for this puzzle —
- * without it the hide flags are ignored, since anyone can type `footer=0`
- * into an iframe src.
+ * without it the hide flag is ignored, since anyone can type `title=0`
+ * into an iframe src. `showFooter` is a snippet-side option with no frame
+ * counterpart, so it's always true here.
  */
 export function parseEmbedOptions(params: EmbedSearchParams, keyValid: boolean): EmbedOptions {
   const scheme = first(params.scheme);
   return {
     scheme: scheme === "light" || scheme === "dark" ? scheme : "auto",
     showTitle: !keyValid || first(params.title) !== "0",
-    showFooter: !keyValid || first(params.footer) !== "0",
+    showFooter: true,
   };
 }
 
@@ -86,7 +91,6 @@ export function embedUrl(
   const url = new URL(embedPath, origin);
   if (options.scheme !== "auto") url.searchParams.set("scheme", options.scheme);
   if (!options.showTitle) url.searchParams.set("title", "0");
-  if (!options.showFooter) url.searchParams.set("footer", "0");
   if (key && embedNeedsKey(options)) url.searchParams.set("k", key);
   return url.toString();
 }
@@ -110,46 +114,59 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Inputs for the caption under the iframe. */
+export interface EmbedCaptionInput {
+  origin: string;
+  options: EmbedOptions;
+  /** Localized "Made with {{link}}" template. */
+  madeWith: string;
+  siteName: string;
+}
+
 /**
- * The paste-ready snippet: iframe + resize script + a plain-HTML caption.
- * The caption is the one part a crawler attributes to the host page (framed
- * content is credited to us), so it carries the title, a link to the puzzle,
- * and the "made with" backlink. Turning the footer off drops the backlink from
- * the caption too — that's the attribution the member is opting out of — but
- * the title link stays, since it's the host page's own text.
+ * The credit under the iframe, as plain HTML in the host page: one centred
+ * "Made with <site>" line. It used to be a footer inside the frame; it lives
+ * in the host's HTML because that's the only place a crawler credits to the
+ * host page (framed content is credited to us). Everything is `inherit`
+ * (font, colour) with a little opacity for the muted look, so it follows the
+ * host's own dark mode without knowing how that's switched — and it's a
+ * single centred line on purpose: a two-sided flex row was the first cut,
+ * and host stylesheets that reach into `p` broke its alignment. The way
+ * back to the full puzzle is the frame's own Open button.
+ * Turning the credit off is a member feature; the caption is then omitted.
+ */
+export function embedCaption({ origin, options, madeWith, siteName }: EmbedCaptionInput): string {
+  if (!options.showFooter) return "";
+  const credit = escapeHtml(madeWith).replace(
+    "{{link}}",
+    `<a href="${origin}/" style="color:inherit;text-decoration:none;font-weight:600">${escapeHtml(siteName)}</a>`
+  );
+  return `<p style="margin:0.5em 0 0;text-align:center;font-size:0.8em;line-height:1.4;color:inherit;opacity:0.75">${credit}</p>`;
+}
+
+/**
+ * The paste-ready snippet: iframe + resize/scheme script + the caption.
  */
 export function embedSnippet({
   origin,
   embedPath,
-  puzzlePath,
   puzzleTitle,
   size,
-  options,
   key,
-  madeWith,
-  siteName,
-}: {
-  origin: string;
+  ...caption
+}: EmbedCaptionInput & {
   embedPath: string;
-  puzzlePath: string;
   puzzleTitle: string;
   size: number;
-  options: EmbedOptions;
   key?: string | null;
-  /** Localized "Made with {{link}}" template. */
-  madeWith: string;
-  siteName: string;
 }): string {
-  const src = embedUrl(origin, embedPath, options, key);
+  const src = embedUrl(origin, embedPath, caption.options, key);
   const title = escapeHtml(puzzleTitle);
-  const caption = escapeHtml(madeWith).replace(
-    "{{link}}",
-    `<a href="${origin}/">${escapeHtml(siteName)}</a>`
-  );
-  const titleLink = `<a href="${origin}${puzzlePath}">${title}</a>`;
   return [
     `<iframe src="${src}" title="${title}" width="100%" height="${embedFallbackHeight(size)}" style="border:0;max-width:100%;display:block" loading="lazy" allow="clipboard-write"></iframe>`,
     `<script async src="${origin}/embed.js"></script>`,
-    `<p style="font-size:0.85em;margin:0.5em 0 0">${options.showFooter ? `${titleLink} — ${caption}` : titleLink}</p>`,
-  ].join("\n");
+    embedCaption({ origin, ...caption }),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

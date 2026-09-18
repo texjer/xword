@@ -396,10 +396,16 @@ export interface paths {
         };
         /**
          * Export a puzzle
-         * @description Download a puzzle as JSON or as an Across Lite `.puz` file.
+         * @description Download a puzzle as JSON, as an Across Lite `.puz` file, or as a
+         *     self-contained HTML page.
          *
          *     JSON matches `GET /puzzles/{id}`. The `.puz` format only supports some
          *     Latin-script languages. Check `puzExportable` in `GET /languages`.
+         *
+         *     `html` is one file with the grid, the clues and a small player, and no
+         *     external requests. Serve it from your own site to keep the clues in
+         *     your own page rather than in an iframe. The player's labels are in the
+         *     puzzle's language. The grid must be full and every entry clued.
          */
         get: operations["exportPuzzle"];
         put?: never;
@@ -1745,7 +1751,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Output format. */
-                format?: "json" | "puz";
+                format?: "json" | "puz" | "html";
             };
             header?: never;
             path: {
@@ -1763,8 +1769,8 @@ export interface operations {
             200: {
                 headers: {
                     /**
-                     * @description Set for `puz` only. The filename is a slug of the puzzle's title, e.g.
-                     *     `attachment; filename="coastal-mini.puz"`.
+                     * @description Set for `puz` and `html`. The filename is a slug of the puzzle's
+                     *     title, e.g. `attachment; filename="coastal-mini.puz"`.
                      */
                     "Content-Disposition"?: string;
                     [name: string]: unknown;
@@ -1772,11 +1778,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Puzzle"];
                     "application/x-crossword": string;
+                    "text/html": string;
                 };
             };
             /**
              * @description `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
-             *     in ISO-8859-1.
+             *     in ISO-8859-1, or `html` requested for a puzzle with empty cells or
+             *     unclued entries.
              */
             400: {
                 headers: {

@@ -716,8 +716,18 @@ async function cmdPuzzlesPublish(io: Io, args: string[], flags: FlagValues): Pro
 async function cmdExport(io: Io, args: string[], flags: FlagValues): Promise<number> {
   const client = makeClient(io, flags, true);
   const wantsPuz = bool(flags, "puz");
-  if (wantsPuz && bool(flags, "json") && !str(flags, "out")) {
-    throw new UsageError("--puz and --json ask for different files; pick one.");
+  const wantsHtml = bool(flags, "html");
+  if (wantsPuz && wantsHtml) {
+    throw new UsageError("--puz and --html ask for different files; pick one.");
+  }
+  if ((wantsPuz || wantsHtml) && bool(flags, "json") && !str(flags, "out")) {
+    throw new UsageError(`--${wantsPuz ? "puz" : "html"} and --json ask for different files; pick one.`);
+  }
+
+  if (wantsHtml) {
+    const { data, filename } = await client.exportPuzzle(args[0], { format: "html" });
+    writeOut(io, data, str(flags, "out"), bool(flags, "quiet"), `HTML (${filename})`);
+    return 0;
   }
 
   if (!wantsPuz) {

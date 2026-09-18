@@ -266,6 +266,24 @@ describe("CrosswordClient — one call per operation", () => {
     expect(Array.from(result.data)).toEqual(Array.from(bytes));
     expect(calls[0].headers.get("accept")).toBe("application/x-crossword");
   });
+
+  it("exportPuzzle html returns the page as text and the suggested filename", async () => {
+    const page = "<!doctype html>\n<html lang=\"en\"><title>Lighthouses</title></html>\n";
+    const { client: c, calls } = client([
+      new Response(page, {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-disposition": 'attachment; filename="lighthouses.html"',
+        },
+      }),
+    ]);
+    const result = await c.exportPuzzle("k3n8q1zp", { format: "html" });
+    expect(result.filename).toBe("lighthouses.html");
+    expect(result.data).toBe(page);
+    expect(calls[0].url).toBe(`${BASE}/puzzles/k3n8q1zp/export?format=html`);
+    expect(calls[0].headers.get("accept")).toBe("text/html");
+  });
 });
 
 describe("authentication and headers", () => {
