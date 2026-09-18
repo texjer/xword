@@ -26,7 +26,7 @@
     "node": ">=20"
   },
   "bin": {
-    "xword": "./dist/cli.js"
+    "xword": "dist/cli.js"
   },
   "exports": {
     ".": {
