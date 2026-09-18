@@ -17,6 +17,12 @@
 # a clear message if CROSSWORD_API_KEY is unset.
 #
 # Requires: node >= 20, jq, and a built package (npm run build).
+#
+# Run it with an ordinary key, not an admin's. Publishing under a clue
+# contributor (admin / CLUE_CONTRIBUTOR_EMAILS) harvests the answer/clue pairs
+# into the shared corpus, and this script clues everything "Placeholder clue".
+# If that happens, remove them on the box:
+#   DELETE FROM clues WHERE clue_text = 'Placeholder clue' AND source = 'user-published'
 
 set -euo pipefail
 
@@ -102,7 +108,8 @@ bold "9. xword puzzles create"
 # Publishing needs a clue for every complete entry, and the numbering depends on
 # the black squares the pattern ended up with — so rather than hardcode numbers
 # that would silently go stale, clue every number a 5×5 could carry. Clues for
-# numbers the grid doesn't use are ignored.
+# numbers the grid doesn't use are stored but never shown — the puzzle page
+# reads by slot number — so the export below carries all 25 keys back.
 jq -nc \
   --argjson grid "$(jq -Rn '[inputs]' < "$work/clean.txt")" \
   --argjson clues "$(jq -nc '[range(1;26)] | map({(tostring): "Placeholder clue"}) | add')" '{
@@ -141,7 +148,7 @@ fi
 
 bold "14. xword export ${puzzle_id} --json"
 $XWORD export "$puzzle_id" --json --out "$work/puzzle-export.json" || fail "export json"
-jq -r '"   \(.title) — \(.clues.across | length) across clues"' < "$work/puzzle-export.json"
+jq -r '"   \(.title) — \(.size)×\(.size), \(.clues.across | length) across clue keys"' < "$work/puzzle-export.json"
 
 echo
 bold "All steps passed."
