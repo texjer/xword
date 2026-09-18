@@ -90,34 +90,36 @@ const nodeIo: Io = {
     for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
     return Buffer.concat(chunks).toString("utf8");
   },
-  async promptSecret(question) {
-    if (!process.stdin.isTTY) return (await nodeIo.readStdin()).trim();
-    const rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
+  promptSecret(question) {
+    if (!process.stdin.isTTY) return nodeIo.readStdin().then((s) => s.trim());
+    // readline has no masked prompt, and its `_writeToOutput` echo hook — the
+    // old trick for muting one — is private and gone as of Node 25. Raw mode
+    // needs no internals: read keystrokes ourselves and echo nothing.
+    const stdin = process.stdin;
+    process.stdout.write(question);
+    return new Promise<string>((resolve, reject) => {
+      let buffer = "";
+      const wasRaw = stdin.isRaw;
+      const finish = (err?: Error) => {
+        stdin.off("data", onData);
+        stdin.setRawMode(wasRaw);
+        stdin.pause();
+        process.stdout.write("\n");
+        if (err) reject(err);
+        else resolve(buffer.trim());
+      };
+      const onData = (chunk: Buffer) => {
+        for (const ch of chunk.toString("utf8")) {
+          if (ch === "\u0003") return finish(new Error("Cancelled"));
+          if (ch === "\r" || ch === "\n") return finish();
+          if (ch === "\u007f" || ch === "\b") buffer = buffer.slice(0, -1);
+          else if (ch >= " ") buffer += ch;
+        }
+      };
+      stdin.setRawMode(true);
+      stdin.resume();
+      stdin.on("data", onData);
     });
-    // readline has no built-in masked prompt; muting its echo hook is the
-    // standard way, and it beats pulling in a dependency to type one secret.
-    const internals = rl as unknown as {
-      _writeToOutput: (text: string) => void;
-      output: NodeJS.WritableStream;
-    };
-    const original = internals._writeToOutput.bind(rl);
-    let muted = false;
-    internals._writeToOutput = (text: string) => {
-      if (!muted) original(text);
-    };
-    const pending = rl.question(question);
-    muted = true;
-    try {
-      const answer = await pending;
-      return answer.trim();
-    } finally {
-      muted = false;
-      process.stdout.write("\n");
-      rl.close();
-    }
   },
   async confirm(question) {
     if (!process.stdin.isTTY) return false;
