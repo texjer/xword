@@ -23,7 +23,13 @@ export function embedNeedsKey(options: EmbedOptions): boolean {
 export type EmbedMessage =
   | { event: "resize"; id: string; height: number }
   | { event: "progress"; id: string; filled: number; total: number }
-  | { event: "solved"; id: string };
+  | { event: "solved"; id: string }
+  /** Posted once the frame is listening for host messages (only when its
+   * scheme is `auto`); embed.js answers with `scheme`. */
+  | { event: "ready"; id: string };
+
+/** Host page → frame. embed.js sends these; nothing else is expected. */
+export type EmbedHostMessage = { event: "scheme"; scheme: "light" | "dark" };
 
 /** Message `type` discriminator, so hosts can ignore everything else on the wire. */
 export const EMBED_MESSAGE_TYPE = "crossword-embed";
