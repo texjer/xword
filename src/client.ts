@@ -73,6 +73,21 @@ export interface HtmlExportResult {
   filename: string;
 }
 
+/** `format: "pdf"` — one printable page, as bytes. */
+export interface PdfExportResult {
+  data: Uint8Array;
+  filename: string;
+}
+
+/** `format: "svg"` — the numbered grid as an SVG document string. */
+export interface SvgExportResult {
+  data: string;
+  filename: string;
+}
+
+export type ExportFormat = "json" | "puz" | "html" | "pdf" | "svg";
+export type ExportPaper = "letter" | "a4";
+
 export const DEFAULT_BASE_URL = "https://crossword.texs.org/api/v1";
 
 export interface CrosswordClientOptions {
@@ -104,7 +119,7 @@ export interface ResponseMeta {
   sessionId?: string;
 }
 
-const PACKAGE_VERSION = "0.1.2";
+const PACKAGE_VERSION = "0.1.3";
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -537,10 +552,13 @@ export class CrosswordClient {
 
   /**
    * `GET /puzzles/{id}/export` — the `Puzzle` document, the Across Lite
-   * binary, or a self-contained HTML page to host yourself. `.puz` is
-   * single-byte ISO-8859-1, so a language whose `puzExportable` is `false`
-   * returns `400 VALIDATION_ERROR` instead of a corrupt file; `html` needs a
-   * full grid with every entry clued and returns the same error otherwise.
+   * binary, a self-contained HTML page to host yourself, a printable PDF
+   * (`paper: "letter" | "a4"`, `solution: true` for the answer key), or the
+   * numbered grid as SVG (`solution` too). `.puz` is single-byte ISO-8859-1,
+   * so a language whose `puzExportable` is `false` returns
+   * `400 VALIDATION_ERROR` instead of a corrupt file; `html` needs a full grid
+   * with every entry clued; `pdf` has no font for CJK, Devanagari or Thai
+   * scripts yet. All three return the same error rather than a broken file.
    */
   async exportPuzzle(
     id: string,
@@ -556,18 +574,39 @@ export class CrosswordClient {
   ): Promise<HtmlExportResult>;
   async exportPuzzle(
     id: string,
-    options: { format?: "json" | "puz" | "html" } & RequestOptions = {}
-  ): Promise<Puzzle | PuzExportResult | HtmlExportResult> {
+    options: { format: "pdf"; paper?: ExportPaper; solution?: boolean } & RequestOptions
+  ): Promise<PdfExportResult>;
+  async exportPuzzle(
+    id: string,
+    options: { format: "svg"; solution?: boolean } & RequestOptions
+  ): Promise<SvgExportResult>;
+  async exportPuzzle(
+    id: string,
+    options: {
+      format?: ExportFormat;
+      paper?: ExportPaper;
+      solution?: boolean;
+    } & RequestOptions = {}
+  ): Promise<Puzzle | PuzExportResult | HtmlExportResult | PdfExportResult | SvgExportResult> {
     const format = options.format ?? "json";
-    const accept = { json: "application/json", puz: "application/x-crossword", html: "text/html" }[format];
+    const accept = {
+      json: "application/json",
+      puz: "application/x-crossword",
+      html: "text/html",
+      pdf: "application/pdf",
+      svg: "image/svg+xml",
+    }[format];
+    const query: Record<string, string> = { format };
+    if (options.paper) query.paper = options.paper;
+    if (options.solution) query.solution = "true";
     const response = await this.request(
       "GET",
       `/puzzles/${encodeURIComponent(id)}/export`,
-      { query: { format }, accept, retryable: true, signal: options.signal }
+      { query, accept, retryable: true, signal: options.signal }
     );
     if (format === "json") return this.json<Puzzle>(response);
     const filename = filenameFrom(response.headers, id, format);
-    if (format === "html") return { data: await response.text(), filename };
+    if (format === "html" || format === "svg") return { data: await response.text(), filename };
     return { data: new Uint8Array(await response.arrayBuffer()), filename };
   }
 }

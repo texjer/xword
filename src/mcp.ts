@@ -48,7 +48,7 @@ import {
   gridSlots,
   type PatternInfo,
 } from "./local.js";
-import { embedSnippet } from "@/lib/embed";
+import { EMBED_SCALE_DEFAULT, embedSnippet } from "@/lib/embed";
 
 export const MCP_AVAILABLE = true;
 
@@ -282,7 +282,7 @@ function embedFor(origin: string, puzzle: Puzzle): string {
     embedPath: `/embed/${puzzle.id}`,
     puzzleTitle: puzzle.title,
     size: puzzle.size,
-    options: { scheme: "auto", showTitle: true, showFooter: true },
+    options: { scheme: "auto", scale: EMBED_SCALE_DEFAULT, showTitle: true, showFooter: true },
     madeWith: "Made with {{link}}",
     siteName: "Crossword Generator",
   });
@@ -1074,34 +1074,46 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
         "`json` returns the puzzle document. `html` returns one self-contained " +
         "playable page (grid, clues, small player, no external requests) as text, " +
         "for hosting on the user's own site so the clues live in their page rather " +
-        "than an iframe; it needs a full grid with every entry clued. `puz` returns the classic Across Lite " +
-        "binary **base64-encoded**, because stdio MCP cannot hand back a file — " +
-        "decode it yourself and write the bytes (`base64 -d`, or " +
+        "than an iframe; it needs a full grid with every entry clued. `svg` returns " +
+        "the numbered grid alone as an SVG document (no clues; `solution: true` " +
+        "draws the answers) for laying out a page yourself. `puz` (Across Lite) and " +
+        "`pdf` (one printable page on `paper: letter|a4`, `solution: true` for the " +
+        "answer key) are binary and come back **base64-encoded**, because stdio MCP " +
+        "cannot hand back a file — decode and write the bytes (`base64 -d`, or " +
         "`Buffer.from(data, \"base64\")`) using the `filename` given. The .puz writer " +
         "is single-byte ISO-8859-1, so a non-Latin language returns " +
         "`VALIDATION_ERROR` rather than a corrupt file — check `puzExportable` in " +
-        "list_languages first.",
+        "list_languages first; `pdf` likewise refuses CJK, Devanagari and Thai scripts.",
       inputSchema: {
         id: z.string().min(1),
-        format: z.enum(["json", "puz", "html"]).default("json"),
+        format: z.enum(["json", "puz", "html", "pdf", "svg"]).default("json"),
+        paper: z.enum(["letter", "a4"]).optional().describe("pdf only: page size (default letter)."),
+        solution: z.boolean().optional().describe("pdf and svg: draw the answers."),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    guard(async ({ id, format }) => {
+    guard(async ({ id, format, paper, solution }) => {
       if (format === "json") {
         const puzzle = await client.exportPuzzle(id, { format: "json" });
         return result(`${puzzle.title} as JSON.`, puzzle);
       }
-      if (format === "html") {
-        const { data, filename } = await client.exportPuzzle(id, { format: "html" });
-        return result(`${data.length} characters of HTML. Save as ${filename}.`, {
+      if (format === "html" || format === "svg") {
+        const { data, filename } =
+          format === "html"
+            ? await client.exportPuzzle(id, { format: "html" })
+            : await client.exportPuzzle(id, { format: "svg", solution });
+        return result(`${data.length} characters of ${format.toUpperCase()}. Save as ${filename}.`, {
           filename,
           data,
         });
       }
-      const { data, filename } = await client.exportPuzzle(id, { format: "puz" });
+      const { data, filename } =
+        format === "puz"
+          ? await client.exportPuzzle(id, { format: "puz" })
+          : await client.exportPuzzle(id, { format: "pdf", paper, solution });
+      const what = format === "puz" ? "Across Lite .puz" : "PDF";
       return result(
-        `${data.length} bytes of Across Lite .puz, base64-encoded. Decode it and save as ${filename}.`,
+        `${data.length} bytes of ${what}, base64-encoded. Decode it and save as ${filename}.`,
         {
           filename,
           encoding: "base64",

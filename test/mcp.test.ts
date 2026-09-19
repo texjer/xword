@@ -477,6 +477,43 @@ describe("tool calls", () => {
 
     await session.close();
   });
+
+  it("export_puzzle returns svg as text and pdf as base64", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+    const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+    const session = await connect([
+      new Response(svg, {
+        status: 200,
+        headers: {
+          "content-type": "image/svg+xml",
+          "content-disposition": 'attachment; filename="coastal-mini.svg"',
+        },
+      }),
+      new Response(pdf, {
+        status: 200,
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": 'attachment; filename="coastal-mini.pdf"',
+        },
+      }),
+    ]);
+
+    const asSvg = await session.client.callTool({
+      name: "export_puzzle",
+      arguments: { id: "k3n8q1zp", format: "svg" },
+    });
+    expect(payloadOf(asSvg).data).toBe(svg);
+    expect(payloadOf(asSvg).filename).toBe("coastal-mini.svg");
+
+    const asPdf = await session.client.callTool({
+      name: "export_puzzle",
+      arguments: { id: "k3n8q1zp", format: "pdf", paper: "a4" },
+    });
+    expect(payloadOf(asPdf).encoding).toBe("base64");
+    expect(Buffer.from(payloadOf(asPdf).data, "base64")).toEqual(Buffer.from(pdf));
+
+    await session.close();
+  });
 });
 
 // --- Errors ----------------------------------------------------------------

@@ -396,8 +396,8 @@ export interface paths {
         };
         /**
          * Export a puzzle
-         * @description Download a puzzle as JSON, as an Across Lite `.puz` file, or as a
-         *     self-contained HTML page.
+         * @description Download a puzzle as JSON, as an Across Lite `.puz` file, as a
+         *     self-contained HTML page, as a print-ready PDF, or as an SVG grid.
          *
          *     JSON matches `GET /puzzles/{id}`. The `.puz` format only supports some
          *     Latin-script languages. Check `puzExportable` in `GET /languages`.
@@ -406,6 +406,17 @@ export interface paths {
          *     external requests. Serve it from your own site to keep the clues in
          *     your own page rather than in an iframe. The player's labels are in the
          *     puzzle's language. The grid must be full and every entry clued.
+         *
+         *     `pdf` is one printable page — title, grid and clues in four columns,
+         *     with a QR link to the puzzle page once it is published — on US Letter
+         *     or A4 (`paper`). Add `solution=true` for the answer key. Languages
+         *     written in CJK, Devanagari or Thai scripts cannot be rendered as PDF
+         *     yet and return `400`; use `svg` or `html` for those.
+         *
+         *     `svg` is the numbered grid alone as one scalable vector image, with
+         *     no clues, for laying out your own page (books, newsletters, large
+         *     print). It works for every language. `solution=true` draws the
+         *     answers.
          */
         get: operations["exportPuzzle"];
         put?: never;
@@ -1751,7 +1762,14 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Output format. */
-                format?: "json" | "puz" | "html";
+                format?: "json" | "puz" | "html" | "pdf" | "svg";
+                /** @description Page size for `pdf`. Ignored by the other formats. */
+                paper?: "letter" | "a4";
+                /**
+                 * @description For `pdf` and `svg`: draw the answers (an answer key) instead of an
+                 *     empty grid. Ignored by the other formats.
+                 */
+                solution?: boolean;
             };
             header?: never;
             path: {
@@ -1769,8 +1787,9 @@ export interface operations {
             200: {
                 headers: {
                     /**
-                     * @description Set for `puz` and `html`. The filename is a slug of the puzzle's
-                     *     title, e.g. `attachment; filename="coastal-mini.puz"`.
+                     * @description Set for every format except `json`. The filename is a slug of
+                     *     the puzzle's title, e.g. `attachment; filename="coastal-mini.puz"`;
+                     *     an answer key adds `-solution`.
                      */
                     "Content-Disposition"?: string;
                     [name: string]: unknown;
@@ -1779,12 +1798,15 @@ export interface operations {
                     "application/json": components["schemas"]["Puzzle"];
                     "application/x-crossword": string;
                     "text/html": string;
+                    "application/pdf": string;
+                    "image/svg+xml": string;
                 };
             };
             /**
              * @description `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
-             *     in ISO-8859-1, or `html` requested for a puzzle with empty cells or
-             *     unclued entries.
+             *     in ISO-8859-1, `html` requested for a puzzle with empty cells or
+             *     unclued entries, `pdf` requested for a script with no bundled font,
+             *     or an unknown `paper`.
              */
             400: {
                 headers: {

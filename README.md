@@ -63,6 +63,8 @@ xword puzzles create puzzle.json              # save it
 xword puzzles publish k3n8q1zp                # mint the public + embed URLs
 xword export k3n8q1zp --puz --out mine.puz    # Across Lite
 xword export k3n8q1zp --html --out mine.html  # one playable page for your own site
+xword export k3n8q1zp --pdf --paper a4 --out mine.pdf   # printable page; --solution for the key
+xword export k3n8q1zp --svg --out mine.svg    # the numbered grid alone, for your own layout
 ```
 
 `scripts/cli-walkthrough.sh` runs that whole journey end to end against a
@@ -129,7 +131,7 @@ to protect really do carry a letter.
 | `xword puzzles update <id> <patch.json\|->` | PATCH a subset of fields; omitted ones are left alone. |
 | `xword puzzles delete <id> [--yes]` | Permanent, history included. |
 | `xword puzzles publish <id> [--showcase] [--writeup] [--show-profile] [--no-index]` | Mint the public and embed URLs. |
-| `xword export <id> [--puz\|--html\|--json] [--out]` | Across Lite binary, a self-contained HTML page, or the puzzle document. |
+| `xword export <id> [--puz\|--html\|--pdf\|--svg\|--json] [--paper letter\|a4] [--solution] [--out]` | Across Lite binary, a self-contained HTML page, a printable PDF, the grid as SVG, or the puzzle document. |
 
 Publishing is **unlisted by default**. `--showcase` opts into the public
 showcase review queue — a human reads those, so the CLI does not enter it on
@@ -237,9 +239,11 @@ One method per operation in the spec:
 
 `fillGrid` and `improveFill` accept either a bare grid or the full request
 object. `exportPuzzle` returns the `Puzzle` for `format: "json"` and
-`{ data, filename }` for `format: "puz"` (bytes) and `format: "html"` (a
+`{ data, filename }` for `format: "puz"` (bytes), `format: "html"` (a
 string: one self-contained playable page to host on your own site, so the
-clues sit in your page rather than an iframe).
+clues sit in your page rather than an iframe), `format: "pdf"` (bytes: one
+printable page, `paper: "letter" | "a4"`, `solution: true` for the answer
+key) and `format: "svg"` (a string: the numbered grid alone, `solution` too).
 
 Types are generated from `openapi.yaml` (`npm run gen`), so a contract change
 shows up as a type error rather than a runtime surprise. The same spec is served
@@ -295,8 +299,9 @@ Re-exported from the web constructor, so there is one implementation of each:
 * `ALPHABET_CONFIGS`, `normalizePuzzleText`, `isRtlLanguage`,
   `isCrissCrossOnlyLanguage`, `minSlotLength`, `getPuzzleUnits`
 
-HTML export is not built locally: the server renders it
-(`exportPuzzle(id, { format: "html" })`, `xword export --html`).
+HTML, PDF and SVG export are not built locally: the server renders them
+(`exportPuzzle(id, { format: "html" | "pdf" | "svg" })`, `xword export
+--html|--pdf|--svg`).
 
 Known limit, inherited from the shared generator: `generateAmericanPattern`
 gives up outside roughly 10–18 cells a side and returns an all-white grid
@@ -365,7 +370,7 @@ client surfaces prompts.
 | `update_puzzle` | PATCH a subset of fields. `clues` replaces both maps wholesale. | free¹ |
 | `delete_puzzle` | Permanent, history included. | free¹ |
 | `publish_puzzle` | Mint the public URL and the embed snippet. | free¹ |
-| `export_puzzle` | The puzzle document, or Across Lite `.puz` as base64. | free¹ |
+| `export_puzzle` | The puzzle document, an HTML page or SVG grid as text, or Across Lite `.puz` / a printable PDF as base64. | free¹ |
 
 ¹ free beyond the per-minute rate limit for your tier.
 

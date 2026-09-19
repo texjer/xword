@@ -9,6 +9,13 @@ export type EmbedScheme = "auto" | "light" | "dark";
 
 export interface EmbedOptions {
   scheme: EmbedScheme;
+  /**
+   * Puzzle scale: a multiplier on the frame's root font-size, so the grid,
+   * the clue lists and the type all grow or shrink together. Free, unlike the
+   * hide flags — it changes the size of our own branding, not whether it's
+   * there.
+   */
+  scale: number;
   /** Title bar (title + author). Hiding it is a member feature. */
   showTitle: boolean;
   /**
@@ -18,6 +25,23 @@ export interface EmbedOptions {
    * simply gets a snippet without the line.
    */
   showFooter: boolean;
+}
+
+export const EMBED_SCALE_DEFAULT = 1;
+export const EMBED_SCALE_MIN = 0.7;
+export const EMBED_SCALE_MAX = 1.6;
+
+/**
+ * Scale is a URL param on a frame anyone can host, so it can arrive as
+ * anything. Bad values fall back to 1 rather than erroring, and the range is
+ * bounded because the grid's own cell cap is in `rem`: below ~0.7 the numbers
+ * in the squares stop being legible, and much above 1.6 a 15x15 no longer
+ * fits a laptop viewport at all. Two decimals — a URL carrying
+ * `scale=1.1500000000000001` is nobody's idea of a snippet.
+ */
+export function clampEmbedScale(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return EMBED_SCALE_DEFAULT;
+  return Math.round(Math.min(EMBED_SCALE_MAX, Math.max(EMBED_SCALE_MIN, value)) * 100) / 100;
 }
 
 /** Hiding the title bar needs the puzzle's customize key (see lib/embedKey.ts). */
@@ -49,6 +73,7 @@ export function postEmbedMessage(message: EmbedMessage) {
 
 export type EmbedSearchParams = {
   scheme?: string | string[];
+  scale?: string | string[];
   title?: string | string[];
   k?: string | string[];
 };
@@ -68,6 +93,7 @@ export function parseEmbedOptions(params: EmbedSearchParams, keyValid: boolean):
   const scheme = first(params.scheme);
   return {
     scheme: scheme === "light" || scheme === "dark" ? scheme : "auto",
+    scale: clampEmbedScale(Number(first(params.scale))),
     showTitle: !keyValid || first(params.title) !== "0",
     showFooter: true,
   };
@@ -90,6 +116,7 @@ export function embedUrl(
 ): string {
   const url = new URL(embedPath, origin);
   if (options.scheme !== "auto") url.searchParams.set("scheme", options.scheme);
+  if (options.scale !== EMBED_SCALE_DEFAULT) url.searchParams.set("scale", String(options.scale));
   if (!options.showTitle) url.searchParams.set("title", "0");
   if (key && embedNeedsKey(options)) url.searchParams.set("k", key);
   return url.toString();
@@ -101,9 +128,11 @@ export function embedUrl(
  * side by side below — since typical blog columns are narrower than the
  * side-by-side breakpoint. Once embed.js runs, it takes over from this.
  */
-export function embedFallbackHeight(size: number): number {
+export function embedFallbackHeight(size: number, scale = EMBED_SCALE_DEFAULT): number {
   const gridPx = size <= 15 ? Math.min(72 * size, 544) : 27.2 * size;
-  return Math.round(gridPx + 470);
+  // Everything in the frame is sized in `rem`, so a scale multiplies the whole
+  // estimate, not just the grid.
+  return Math.round((gridPx + 470) * scale);
 }
 
 function escapeHtml(text: string): string {
@@ -163,7 +192,7 @@ export function embedSnippet({
   const src = embedUrl(origin, embedPath, caption.options, key);
   const title = escapeHtml(puzzleTitle);
   return [
-    `<iframe src="${src}" title="${title}" width="100%" height="${embedFallbackHeight(size)}" style="border:0;max-width:100%;display:block" loading="lazy" allow="clipboard-write"></iframe>`,
+    `<iframe src="${src}" title="${title}" width="100%" height="${embedFallbackHeight(size, caption.options.scale)}" style="border:0;max-width:100%;display:block" loading="lazy" allow="clipboard-write"></iframe>`,
     `<script async src="${origin}/embed.js"></script>`,
     embedCaption({ origin, ...caption }),
   ]

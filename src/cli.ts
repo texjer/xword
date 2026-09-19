@@ -28,6 +28,7 @@ import {
   type Puzzle,
   type PuzzleInput,
   type PuzzlePatch,
+  type ExportFormat,
 } from "./client.js";
 import { CrosswordApiError } from "./errors.js";
 import {
@@ -715,33 +716,50 @@ async function cmdPuzzlesPublish(io: Io, args: string[], flags: FlagValues): Pro
 
 async function cmdExport(io: Io, args: string[], flags: FlagValues): Promise<number> {
   const client = makeClient(io, flags, true);
-  const wantsPuz = bool(flags, "puz");
-  const wantsHtml = bool(flags, "html");
-  if (wantsPuz && wantsHtml) {
-    throw new UsageError("--puz and --html ask for different files; pick one.");
+  const picked = (["puz", "html", "pdf", "svg"] as const).filter((f) => bool(flags, f));
+  if (picked.length > 1) {
+    throw new UsageError(`--${picked[0]} and --${picked[1]} ask for different files; pick one.`);
   }
-  if ((wantsPuz || wantsHtml) && bool(flags, "json") && !str(flags, "out")) {
-    throw new UsageError(`--${wantsPuz ? "puz" : "html"} and --json ask for different files; pick one.`);
+  const format: ExportFormat = picked.at(0) ?? "json";
+  if (format !== "json" && bool(flags, "json") && !str(flags, "out")) {
+    throw new UsageError(`--${format} and --json ask for different files; pick one.`);
   }
+  const paper = str(flags, "paper");
+  if (paper !== undefined && paper !== "letter" && paper !== "a4") {
+    throw new UsageError("--paper must be letter or a4.");
+  }
+  if (paper !== undefined && format !== "pdf") {
+    throw new UsageError("--paper only applies to --pdf.");
+  }
+  const solution = bool(flags, "solution");
+  if (solution && format !== "pdf" && format !== "svg") {
+    throw new UsageError("--solution only applies to --pdf and --svg.");
+  }
+  const out = str(flags, "out");
 
-  if (wantsHtml) {
-    const { data, filename } = await client.exportPuzzle(args[0], { format: "html" });
-    writeOut(io, data, str(flags, "out"), bool(flags, "quiet"), `HTML (${filename})`);
+  if (format === "html" || format === "svg") {
+    const { data, filename } =
+      format === "html"
+        ? await client.exportPuzzle(args[0], { format: "html" })
+        : await client.exportPuzzle(args[0], { format: "svg", solution });
+    writeOut(io, data, out, bool(flags, "quiet"), `${format.toUpperCase()} (${filename})`);
     return 0;
   }
 
-  if (!wantsPuz) {
+  if (format === "json") {
     const puzzle = await client.exportPuzzle(args[0], { format: "json" });
     const text = `${JSON.stringify(puzzle, null, 2)}\n`;
-    writeOut(io, text, str(flags, "out"), bool(flags, "quiet"), "Puzzle");
+    writeOut(io, text, out, bool(flags, "quiet"), "Puzzle");
     return 0;
   }
 
-  const { data, filename } = await client.exportPuzzle(args[0], { format: "puz" });
-  const out = str(flags, "out");
+  const { data, filename } =
+    format === "puz"
+      ? await client.exportPuzzle(args[0], { format: "puz" })
+      : await client.exportPuzzle(args[0], { format: "pdf", paper, solution });
   if (!out && io.isTty) {
     throw new UsageError(
-      `.puz is binary. Pass --out ${filename}, or redirect stdout to a file.`
+      `.${format} is binary. Pass --out ${filename}, or redirect stdout to a file.`
     );
   }
   if (out) {

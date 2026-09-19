@@ -300,18 +300,29 @@ export const COMMANDS: CommandSpec[] = [
   {
     name: "export",
     args: "<id>",
-    summary: "Download a puzzle as JSON, Across Lite .puz, or a playable HTML page.",
+    summary: "Download a puzzle as JSON, .puz, a playable HTML page, a printable PDF, or an SVG grid.",
     flags: {
       puz: { type: "boolean", describe: "Across Lite binary (Latin scripts only)." },
       html: {
         type: "boolean",
         describe: "One playable HTML file to host on your own site (needs a full, clued grid).",
       },
+      pdf: {
+        type: "boolean",
+        describe: "One printable page: title, grid, clues in four columns (no CJK/Devanagari/Thai yet).",
+      },
+      svg: { type: "boolean", describe: "The numbered grid alone as a vector image, no clues." },
+      paper: {
+        type: "string",
+        placeholder: "size",
+        describe: "--pdf page size: letter (default) or a4.",
+      },
+      solution: { type: "boolean", describe: "--pdf / --svg: draw the answers (an answer key)." },
       json: { type: "boolean", describe: "The Puzzle document (default)." },
       out: {
         type: "string",
         placeholder: "file",
-        describe: "Write here. Required for --puz unless you redirect stdout.",
+        describe: "Write here. Required for --puz and --pdf unless you redirect stdout.",
       },
     },
     minArgs: 1,

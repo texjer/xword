@@ -2,7 +2,7 @@ openapi: 3.1.0
 
 info:
   title: Crossword Generator API
-  version: "1.0.0"
+  version: "1.1.0"
   summary: Search words, find clues, fill grids, and publish puzzles in 24 languages.
   description: |
     Use the same crossword tools as
@@ -135,7 +135,7 @@ paths:
                   summary: Healthy, English resident
                   value:
                     status: ok
-                    version: "1.0.0"
+                    version: "1.1.0"
                     languages:
                       en: { available: true, loaded: true }
                       ru: { available: true, loaded: false }
@@ -144,7 +144,7 @@ paths:
                   summary: The solver could not be reached
                   value:
                     status: degraded
-                    version: "1.0.0"
+                    version: "1.1.0"
                     languages: {}
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -1549,8 +1549,8 @@ paths:
       operationId: exportPuzzle
       summary: Export a puzzle
       description: |
-        Download a puzzle as JSON, as an Across Lite `.puz` file, or as a
-        self-contained HTML page.
+        Download a puzzle as JSON, as an Across Lite `.puz` file, as a
+        self-contained HTML page, as a print-ready PDF, or as an SVG grid.
 
         JSON matches `GET /puzzles/{id}`. The `.puz` format only supports some
         Latin-script languages. Check `puzExportable` in `GET /languages`.
@@ -1559,6 +1559,17 @@ paths:
         external requests. Serve it from your own site to keep the clues in
         your own page rather than in an iframe. The player's labels are in the
         puzzle's language. The grid must be full and every entry clued.
+
+        `pdf` is one printable page — title, grid and clues in four columns,
+        with a QR link to the puzzle page once it is published — on US Letter
+        or A4 (`paper`). Add `solution=true` for the answer key. Languages
+        written in CJK, Devanagari or Thai scripts cannot be rendered as PDF
+        yet and return `400`; use `svg` or `html` for those.
+
+        `svg` is the numbered grid alone as one scalable vector image, with
+        no clues, for laying out your own page (books, newsletters, large
+        print). It works for every language. `solution=true` draws the
+        answers.
       tags: [Puzzles]
       x-required-scope: read
       parameters:
@@ -1568,16 +1579,32 @@ paths:
           description: Output format.
           schema:
             type: string
-            enum: [json, puz, html]
+            enum: [json, puz, html, pdf, svg]
             default: json
+        - name: paper
+          in: query
+          description: Page size for `pdf`. Ignored by the other formats.
+          schema:
+            type: string
+            enum: [letter, a4]
+            default: letter
+        - name: solution
+          in: query
+          description: |
+            For `pdf` and `svg`: draw the answers (an answer key) instead of an
+            empty grid. Ignored by the other formats.
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: The exported puzzle.
           headers:
             Content-Disposition:
               description: |
-                Set for `puz` and `html`. The filename is a slug of the puzzle's
-                title, e.g. `attachment; filename="coastal-mini.puz"`.
+                Set for every format except `json`. The filename is a slug of
+                the puzzle's title, e.g. `attachment; filename="coastal-mini.puz"`;
+                an answer key adds `-solution`.
               schema:
                 type: string
           content:
@@ -1593,11 +1620,21 @@ paths:
               schema:
                 type: string
                 description: A self-contained playable page.
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                description: One printable page (Letter or A4).
+            image/svg+xml:
+              schema:
+                type: string
+                description: The numbered grid as a vector image.
         "400":
           description: |
             `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
-            in ISO-8859-1, or `html` requested for a puzzle with empty cells or
-            unclued entries.
+            in ISO-8859-1, `html` requested for a puzzle with empty cells or
+            unclued entries, `pdf` requested for a script with no bundled font,
+            or an unknown `paper`.
           content:
             application/problem+json:
               schema:

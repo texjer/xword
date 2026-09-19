@@ -284,6 +284,42 @@ describe("CrosswordClient — one call per operation", () => {
     expect(calls[0].url).toBe(`${BASE}/puzzles/k3n8q1zp/export?format=html`);
     expect(calls[0].headers.get("accept")).toBe("text/html");
   });
+
+  it("exportPuzzle pdf returns bytes and passes paper and solution through", async () => {
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]); // %PDF-
+    const { client: c, calls } = client([
+      new Response(bytes, {
+        status: 200,
+        headers: {
+          "content-type": "application/pdf",
+          "content-disposition": 'attachment; filename="lighthouses-solution.pdf"',
+        },
+      }),
+    ]);
+    const result = await c.exportPuzzle("k3n8q1zp", { format: "pdf", paper: "a4", solution: true });
+    expect(result.filename).toBe("lighthouses-solution.pdf");
+    expect(Array.from(result.data)).toEqual(Array.from(bytes));
+    expect(calls[0].url).toBe(`${BASE}/puzzles/k3n8q1zp/export?format=pdf&paper=a4&solution=true`);
+    expect(calls[0].headers.get("accept")).toBe("application/pdf");
+  });
+
+  it("exportPuzzle svg returns the document as text and omits unset options", async () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"></svg>';
+    const { client: c, calls } = client([
+      new Response(svg, {
+        status: 200,
+        headers: {
+          "content-type": "image/svg+xml; charset=utf-8",
+          "content-disposition": 'attachment; filename="lighthouses.svg"',
+        },
+      }),
+    ]);
+    const result = await c.exportPuzzle("k3n8q1zp", { format: "svg" });
+    expect(result.filename).toBe("lighthouses.svg");
+    expect(result.data).toBe(svg);
+    expect(calls[0].url).toBe(`${BASE}/puzzles/k3n8q1zp/export?format=svg`);
+    expect(calls[0].headers.get("accept")).toBe("image/svg+xml");
+  });
 });
 
 describe("authentication and headers", () => {

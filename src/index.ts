@@ -18,6 +18,10 @@ export {
   type ResponseMeta,
   type PuzExportResult,
   type HtmlExportResult,
+  type PdfExportResult,
+  type SvgExportResult,
+  type ExportFormat,
+  type ExportPaper,
   // Contract types
   type LanguageCode,
   type Language,
