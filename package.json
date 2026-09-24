@@ -1,7 +1,7 @@
 {
   "name": "xword",
-  "version": "0.1.3",
-  "description": "TypeScript client, CLI and MCP server for the Crossword Generator API — word search, clue corpus, grid autofill and puzzle publishing in 24 languages.",
+  "version": "0.1.4",
+  "description": "TypeScript client, CLI and MCP server for the Crossword Generator API — word search, clue corpus, grid autofill and puzzle publishing in 28 languages.",
   "type": "module",
   "license": "MIT",
   "author": "Tex Jernigan",

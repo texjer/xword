@@ -23,7 +23,11 @@ export type PuzzleLanguage =
   | "sv"
   | "no"
   | "da"
-  | "hr";
+  | "hr"
+  | "ca"
+  | "el"
+  | "bg"
+  | "fi";
 
 export interface AlphabetConfig {
   code: PuzzleLanguage;
@@ -157,12 +161,43 @@ export const ALPHABET_CONFIGS: Record<PuzzleLanguage, AlphabetConfig> = {
   // `constructorAvailable` was off while `sv` had no puzzles behind it. It is
   // on as of the ten seeded showcase puzzles (see backend/showcase_seed).
   sv: { code: "sv", name: "Swedish", nativeName: "Svenska", alphabet: `${LATIN}ÅÄÖ`, fold: {}, databaseAvailable: true, puzExportable: true },
-  no: { code: "no", name: "Norwegian", nativeName: "Norsk", alphabet: `${LATIN}ÆØÅ`, fold: {}, databaseAvailable: true, constructorAvailable: false, puzExportable: true },
-  da: { code: "da", name: "Danish", nativeName: "Dansk", alphabet: `${LATIN}ÆØÅ`, fold: {}, databaseAvailable: true, constructorAvailable: false, puzExportable: true },
+  // Norwegian: constructor switched on with the ten seeded showcase puzzles
+  // (see backend/showcase_seed); the shelf is Bokmål.
+  no: { code: "no", name: "Norwegian", nativeName: "Norsk", alphabet: `${LATIN}ÆØÅ`, fold: {}, databaseAvailable: true, puzExportable: true },
+  // Danish: constructor switched on with the ten seeded showcase puzzles
+  // (see backend/showcase_seed) — the first all-american shelf.
+  da: { code: "da", name: "Danish", nativeName: "Dansk", alphabet: `${LATIN}ÆØÅ`, fold: {}, databaseAvailable: true, puzExportable: true },
   // Gaj's Latin alphabet. Croatian counts DŽ, LJ and NJ as single letters, but
   // they're gridded as their component letters so one cell is always one
   // codepoint. Č/Ć/Đ/Š/Ž fall outside Latin-1, so `.puz` export is off.
   hr: { code: "hr", name: "Croatian", nativeName: "Hrvatski", alphabet: `${LATIN}ČĆĐŠŽ`, fold: {}, databaseAvailable: true, puzExportable: false },
+  // Accents (à è é í ï ò ó ú ü) and Ç fold to plain Latin, as in every Catalan
+  // newspaper grid, and the geminate L is written as two L cells: the
+  // interpunct of l·l (and the legacy single codepoint ŀ) is dropped.
+  ca: { code: "ca", name: "Catalan", nativeName: "Català", alphabet: LATIN, fold: { Ŀ: "L", ŀ: "L" }, databaseAvailable: true, puzExportable: true, placeholderWords: ["LLUNA", "ESTEL", "COMETA", "PLANETA", "ORBITA"] },
+  // Greek grids are written in accentless capitals, as every Greek newspaper
+  // σταυρόλεξο is: the tonos and dialytika fold away (Ά → Α, Ϊ → Ι) and final
+  // sigma uppercases to Σ. Greek sits outside Latin-1, so `.puz` export is off.
+  el: { code: "el", name: "Greek", nativeName: "Ελληνικά", alphabet: "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ", fold: {}, databaseAvailable: true, puzExportable: false, placeholderWords: ["ΑΣΤΕΡΙ", "ΦΕΓΓΑΡΙ", "ΗΛΙΟΣ", "ΠΛΑΝΗΤΗΣ", "ΚΟΜΗΤΗΣ"] },
+  // Bulgarian Cyrillic is Russian's alphabet minus Ё, Ы and Э — 30 letters.
+  // The grave accent print puts on a stressed vowel (and on the pronoun ѝ,
+  // "her") is a mark, not a letter, and folds away. Outside Latin-1, so
+  // `.puz` export is off.
+  bg: {
+    code: "bg", name: "Bulgarian", nativeName: "Български", databaseAvailable: true, puzExportable: false,
+    alphabet: "АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЬЮЯ", fold: { Ѝ: "И", ѝ: "И", Ѐ: "Е", ѐ: "Е" },
+    placeholderWords: ["ЛУНА", "МАРС", "КОМЕТА", "ЗЕМЯ", "ОРБИТА"],
+  },
+  // Finnish: Å, Ä and Ö are letters sorted after Z, never folded to A and O
+  // (SÄÄ is the weather, SAA "gets"). Š and Ž appear only in loanwords and a
+  // Finnish grid writes them S and Z, so they fold. All three extra letters
+  // sit in Latin-1, so `.puz` export works. Constructor switched on with the
+  // ten seeded showcase puzzles (see backend/showcase_seed).
+  fi: {
+    code: "fi", name: "Finnish", nativeName: "Suomi", alphabet: `${LATIN}ÅÄÖ`,
+    fold: { Š: "S", š: "S", Ž: "Z", ž: "Z" }, databaseAvailable: true, puzExportable: true,
+    placeholderWords: ["KUU", "MARS", "KOMEETTA", "MAAPALLO", "KIERTORATA"],
+  },
 };
 
 export const AVAILABLE_PUZZLE_LANGUAGES = Object.values(ALPHABET_CONFIGS).filter(
@@ -184,7 +219,7 @@ function foldCharacter(char: string, config: AlphabetConfig): string {
   }
   const uppercase = char.toUpperCase();
   if (config.fold[uppercase]) return config.fold[uppercase];
-  if (["fr", "it", "pt", "pt-BR", "nl", "id"].includes(config.code)) {
+  if (["fr", "it", "pt", "pt-BR", "nl", "id", "ca", "el"].includes(config.code)) {
     return char.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
   return char;

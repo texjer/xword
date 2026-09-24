@@ -119,7 +119,7 @@ export interface ResponseMeta {
   sessionId?: string;
 }
 
-const PACKAGE_VERSION = "0.1.3";
+const PACKAGE_VERSION = "0.1.4";
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

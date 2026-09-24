@@ -460,7 +460,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
     {
       instructions:
         "Word search, the clue corpus, CSP autofill and puzzle publishing for " +
-        "crossword.texs.org, in 24 languages.\n\n" +
+        "crossword.texs.org, in 28 languages.\n\n" +
         WORKFLOW +
         "\n\nGrids are rows of text: `.` empty, `#` black, any other character " +
         "a fixed letter. Every tool that returns a grid also returns `entries` " +

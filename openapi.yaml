@@ -3,7 +3,7 @@ openapi: 3.1.0
 info:
   title: Crossword Generator API
   version: "1.1.0"
-  summary: Search words, find clues, fill grids, and publish puzzles in 24 languages.
+  summary: Search words, find clues, fill grids, and publish puzzles in 28 languages.
   description: |
     Use the same crossword tools as
     [crossword.texs.org](https://crossword.texs.org). You can search words, find
@@ -92,7 +92,7 @@ tags:
   - name: Meta
     description: Check the service and list languages. No key is needed.
   - name: Words
-    description: Search and score words in 24 languages.
+    description: Search and score words in 28 languages.
   - name: Clues
     description: Find saved clues or create new AI clues.
   - name: Solver
@@ -424,9 +424,9 @@ paths:
                   summary: GET /clues/SUB?language=en&limit=3
                   value:
                     clues:
-                      - { text: "Submarine sandwich", source: "published", pubCount: 118 }
-                      - { text: "Fill-in teacher", source: "published", pubCount: 64 }
-                      - { text: "Stand-in", source: "original", pubCount: 0 }
+                      - { text: "Deli sandwich on a long roll", source: "original", pubCount: 0 }
+                      - { text: "be a substitute", source: "dictionary", pubCount: 0 }
+                      - { text: "a submersible warship usually armed with torpedoes", source: "dictionary", pubCount: 0 }
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -495,9 +495,9 @@ paths:
                   value:
                     clues:
                       SUB:
-                        - { text: "Submarine sandwich", source: "published", pubCount: 118 }
+                        - { text: "Deli sandwich on a long roll", source: "original", pubCount: 0 }
                       OREO:
-                        - { text: "Cookie with a creme center", source: "published", pubCount: 402 }
+                        - { text: "Black-and-white cookie", source: "original", pubCount: 0 }
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -1845,7 +1845,7 @@ components:
         Puzzle language code. You may send `pt-BR`, but the API returns `pt`.
         Both use the same Portuguese data.
       enum:
-        [en, es, fr, de, it, pt, pt-BR, pl, nl, zh, ja, ko, hi, ar, tr, he, id, cs, uk, ro, ru, sv, no, da, hr]
+        [en, es, fr, de, it, pt, pt-BR, pl, nl, zh, ja, ko, hi, ar, tr, he, id, cs, uk, ro, ru, sv, no, da, hr, ca, el, bg, fi]
       example: en
 
     Language:
@@ -2045,19 +2045,22 @@ components:
           type: string
           maxLength: 150
           description: The clue itself.
-          example: Submarine sandwich
+          example: Deli sandwich on a long roll
         source:
           type: string
           enum: [published, dictionary, original, ai]
           description: |
-            Where the clue came from: `published`, `dictionary`, `original`, or
-            `ai`. Only a new, unsaved `ai` clue includes a `token`.
+            Where the clue came from: `published` (used in a puzzle published
+            on crossword.texs.org), `dictionary`, `original` (written for this
+            service), or `ai`. No clue is copied from a newspaper or other
+            commercial crossword. Only a new, unsaved `ai` clue includes a
+            `token`.
           example: published
         pubCount:
           type: integer
           description: |
-            How many times a published clue appeared in print. Other clue types
-            return `0`.
+            How many puzzles published on crossword.texs.org used a
+            `published` clue. Other clue types return `0`.
           example: 118
         token:
           type: string

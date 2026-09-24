@@ -438,7 +438,7 @@ export interface components {
          * @example en
          * @enum {string}
          */
-        LanguageCode: "en" | "es" | "fr" | "de" | "it" | "pt" | "pt-BR" | "pl" | "nl" | "zh" | "ja" | "ko" | "hi" | "ar" | "tr" | "he" | "id" | "cs" | "uk" | "ro" | "ru" | "sv" | "no" | "da" | "hr";
+        LanguageCode: "en" | "es" | "fr" | "de" | "it" | "pt" | "pt-BR" | "pl" | "nl" | "zh" | "ja" | "ko" | "hi" | "ar" | "tr" | "he" | "id" | "cs" | "uk" | "ro" | "ru" | "sv" | "no" | "da" | "hr" | "ca" | "el" | "bg" | "fi";
         /** @description One entry in the language registry. */
         Language: {
             code: components["schemas"]["LanguageCode"];
@@ -602,19 +602,22 @@ export interface components {
         Clue: {
             /**
              * @description The clue itself.
-             * @example Submarine sandwich
+             * @example Deli sandwich on a long roll
              */
             text: string;
             /**
-             * @description Where the clue came from: `published`, `dictionary`, `original`, or
-             *     `ai`. Only a new, unsaved `ai` clue includes a `token`.
+             * @description Where the clue came from: `published` (used in a puzzle published
+             *     on crossword.texs.org), `dictionary`, `original` (written for this
+             *     service), or `ai`. No clue is copied from a newspaper or other
+             *     commercial crossword. Only a new, unsaved `ai` clue includes a
+             *     `token`.
              * @example published
              * @enum {string}
              */
             source: "published" | "dictionary" | "original" | "ai";
             /**
-             * @description How many times a published clue appeared in print. Other clue types
-             *     return `0`.
+             * @description How many puzzles published on crossword.texs.org used a
+             *     `published` clue. Other clue types return `0`.
              * @example 118
              */
             pubCount?: number;

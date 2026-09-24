@@ -2,7 +2,7 @@
 
 The TypeScript client and `xword` CLI for the [Crossword Generator
 API](https://crossword.texs.org/developers): word search and dictionary scores
-across 24 languages, the clue corpus, CSP autofill and clean-up, AI clue
+across 28 languages, the clue corpus, CSP autofill and clean-up, AI clue
 generation, and puzzle storage and publishing.
 
 Pattern generation and `.puz` export run locally — they are the web
@@ -49,7 +49,7 @@ keys get all three. A key missing the scope an operation needs gets
 
 ```bash
 xword status                                  # is the service up, which indexes are hot
-xword languages --available                   # the 24 languages and their constraints
+xword languages --available                   # the 28 languages and their constraints
 
 xword words "C_T" --lang en --min-score 40    # pattern search; _ is a wildcard
 xword scores CAT ESNE ZZTOP                   # dictionary scores; unknown words say so
@@ -355,7 +355,7 @@ client surfaces prompts.
 | Tool | What it does | Cost |
 |---|---|---|
 | `get_status` | Service health and which language indexes are resident. | free, no key |
-| `list_languages` | The 24 languages and their constraints (`available`, `crissCrossOnly`, `rtl`, `puzExportable`, `minSlotLength`). | free, no key |
+| `list_languages` | The 28 languages and their constraints (`available`, `crissCrossOnly`, `rtl`, `puzExportable`, `minSlotLength`). | free, no key |
 | `search_words` | Pattern search — `C_T` → `COT`, `CUT`, … best first. | free¹ |
 | `score_words` | Dictionary score per word; unknown words come back absent, not zero. | free¹ |
 | `lookup_clues` | Corpus clues for one answer, best first, de-duplicated. | free¹ |
