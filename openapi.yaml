@@ -1104,8 +1104,8 @@ paths:
 
         `publish: true` makes an unlisted public puzzle. It does not submit the
         puzzle to the showcase. Use `POST /puzzles/{id}/publish` with
-        `submitToShowcase: true` for that. Unlisted puzzles are hidden from
-        search engines unless you set `noIndex: false`.
+        `submitToShowcase: true` for that. Unlisted puzzles are never
+        indexed by search engines; only showcase puzzles are.
 
         Use `Idempotency-Key` to prevent copies when a request is sent twice.
         Reuse the same value for the same puzzle. A repeat returns the first
@@ -1410,8 +1410,8 @@ paths:
 
         The puzzle is unlisted unless you send `submitToShowcase: true`. A
         person reviews every API showcase request; nothing is listed
-        automatically, so send your best work. An unlisted puzzle is hidden
-        from search engines unless you set `noIndex: false`.
+        automatically, so send your best work. An unlisted puzzle is never
+        indexed by search engines; only showcase puzzles are.
 
         An account can have up to three puzzles waiting for showcase review. A
         fourth returns `409 SHOWCASE_QUEUE_FULL` and changes nothing.
@@ -1442,7 +1442,8 @@ paths:
                 noIndex:
                   type: boolean
                   description: |
-                    Hide the page from search engines. The share link still works.
+                    Keep the page out of search engines even once it is in the
+                    showcase. Unlisted puzzles are never indexed regardless.
                 submitToShowcase:
                   type: boolean
                   default: false
@@ -2381,7 +2382,9 @@ components:
           description: Whether this puzzle is linked from the author's public page.
         noIndex:
           type: boolean
-          description: Author asked search engines to skip the puzzle page.
+          description: |
+            Author asked search engines to skip the puzzle page. Unlisted
+            puzzles are never indexed regardless of this flag.
         createdAt:
           type: string
           format: date-time
