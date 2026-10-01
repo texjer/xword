@@ -101,9 +101,10 @@ nothing, **2** a usage error.
 | `xword pattern [--size 15] [--style american\|british\|freeform] [--out]` | Generate a symmetric black-square pattern **locally**. |
 | `xword fill <grid.txt\|-> [--lang] [--min-score] [--max-time] [--try-hard] [--stream] [--out]` | Auto-fill every empty cell. |
 | `xword improve <grid.txt\|-> [--lock r,c ...] [--lang] [--max-time] [--out]` | Re-fill the obscure entries at a fixed quality floor. |
+| `xword build --lang ko\|zh\|ja [--size 11] [--theme w1,w2 ...] [--out]` | Build a whole Korean, Chinese or Japanese grid. |
 | `xword generate-clues <WORD...> [--lang] [--count] [--yes]` | Write fresh AI clues. Members only. |
 
-`fill` and `improve` each draw one unit from the monthly fill quota;
+`fill`, `improve` and `build` each draw one unit from the monthly fill quota;
 `generate-clues` draws from the AI-clue allowance and asks before it spends.
 
 **`--min-score` is the quality floor.** 40 is the "no junk" line and the
@@ -120,6 +121,13 @@ where theme entries go. On `fill` it is a pre-flight assertion rather than a
 request field: `POST /fill` has no `locked` list because every letter already in
 the grid is held anyway, so `--lock` there just checks that the cells you meant
 to protect really do carry a letter.
+
+**`build`** is for Chinese, Japanese and Korean, where `fill` cannot work: two
+words almost never share a character at a crossing. It places the black cells
+and the answers together (7, 9, 11 or 13 a side) and works in as many `--theme`
+words as fit, reporting the rest as missing. Korean and Chinese grids are open
+lattices; Japanese grids follow the Nikoli rules in katakana. It exits 1 when no
+grid fit — try again or pick another size.
 
 ### Puzzles
 
@@ -228,6 +236,7 @@ One method per operation in the spec:
 | `fillGrid(gridOrRequest)` | `POST /fill` |
 | `fillGridStream(gridOrRequest)` | `POST /fill` (SSE) |
 | `improveFill(gridOrRequest)` | `POST /fill/improve` |
+| `buildGrid({ language, size, theme_words })` | `POST /fill/build` |
 | `cancelFill(sessionId)` | `POST /fill/cancel` |
 | `listPuzzles({ status, limit, offset })` | `GET /puzzles` |
 | `createPuzzle(input)` | `POST /puzzles` |
@@ -364,6 +373,7 @@ client surfaces prompts.
 | `generate_pattern` | Symmetric black-square pattern, american/british/freeform. | **free and local** — no network, no quota |
 | `fill_grid` | Auto-fill every empty cell, holding the letters already placed. | **spends one monthly fill unit, success or not** |
 | `improve_fill` | The "clean up fill" pass — re-solve the rough entries at a fixed floor. | **spends one monthly fill unit** |
+| `build_grid` | A whole Korean, Chinese or Japanese grid around optional theme words. | **spends one monthly fill unit, success or not** |
 | `list_puzzles` | Your puzzles, newest edit first. | free¹ |
 | `get_puzzle` | One of yours, or any published puzzle. | free¹ |
 | `create_puzzle` | Save a puzzle, optionally published (unlisted). | free¹ |
@@ -377,8 +387,8 @@ client surfaces prompts.
 Three things the server does on purpose, because a model reading rows of text
 cannot infer them:
 
-* **Every grid comes back with its entries.** `fill_grid`, `improve_fill` and
-  `get_puzzle` all return an `entries` object — the numbered ACROSS and DOWN
+* **Every grid comes back with its entries.** `fill_grid`, `improve_fill`,
+  `build_grid` and `get_puzzle` all return an `entries` object — the numbered ACROSS and DOWN
   answers — alongside the rows, because clue numbering is the printed rule
   rather than a row scan, and those numbers are exactly the keys
   `create_puzzle`'s `clues` wants.
@@ -391,7 +401,7 @@ cannot infer them:
 
 ### Quota warnings
 
-`fill_grid` and `improve_fill` each draw one unit from the monthly fill
+`fill_grid`, `improve_fill` and `build_grid` each draw one unit from the monthly fill
 allowance **whether or not they find anything** — the quota is spent before the
 solve, so a `too_difficult` result still costs a unit. `generate_clues` is a
 member feature and spends one unit of the monthly AI-clue allowance per answer;

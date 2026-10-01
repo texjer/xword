@@ -28,6 +28,8 @@ export type FillRequest = components["schemas"]["FillRequest"];
 export type FillResult = components["schemas"]["FillResult"];
 export type ImproveRequest = components["schemas"]["ImproveRequest"];
 export type ImproveResult = components["schemas"]["ImproveResult"];
+export type BuildRequest = components["schemas"]["BuildRequest"];
+export type BuildResult = components["schemas"]["BuildResult"];
 export type FillEvent = components["schemas"]["FillEvent"];
 export type FillSessionEvent = components["schemas"]["FillSessionEvent"];
 export type FillProgressEvent = components["schemas"]["FillProgressEvent"];
@@ -119,7 +121,7 @@ export interface ResponseMeta {
   sessionId?: string;
 }
 
-const PACKAGE_VERSION = "0.1.4";
+const PACKAGE_VERSION = "0.1.5";
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -452,6 +454,23 @@ export class CrosswordClient {
       signal: options.signal,
     });
     return this.json<ImproveResult>(response);
+  }
+
+  /**
+   * `POST /fill/build` — a finished Korean, Chinese or Japanese grid, black
+   * cells and answers together, with any `theme_words` that fit. `/fill` cannot
+   * fill a pattern in these languages. Takes 3–8 seconds and counts against the
+   * monthly fill quota; `grid` is `null` when nothing fit.
+   */
+  async buildGrid(
+    input: BuildRequest,
+    options: RequestOptions = {}
+  ): Promise<BuildResult> {
+    const response = await this.request("POST", "/fill/build", {
+      body: input,
+      signal: options.signal,
+    });
+    return this.json<BuildResult>(response);
   }
 
   /** `POST /fill/cancel` — stop an in-flight streaming fill. Idempotent. */

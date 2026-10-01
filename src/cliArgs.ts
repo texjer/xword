@@ -225,6 +225,28 @@ export const COMMANDS: CommandSpec[] = [
     maxArgs: 1,
   },
   {
+    name: "build",
+    summary: "Build a whole Korean, Chinese or Japanese grid. Spends one fill.",
+    details:
+      "`fill` cannot fill a pattern in these languages, so this places the black\n" +
+      "cells and the answers together, working in any --theme words that fit.",
+    flags: {
+      lang: {
+        type: "string",
+        placeholder: "code",
+        describe: "ko, zh or ja (required).",
+      },
+      size: { type: "number", placeholder: "n", describe: "7, 9, 11 or 13 (default 11)." },
+      theme: {
+        type: "string[]",
+        placeholder: "words",
+        describe: "Theme words, comma-separated. Repeatable.",
+      },
+      out: { type: "string", placeholder: "file", describe: "Write the grid here." },
+    },
+    maxArgs: 0,
+  },
+  {
     name: "puzzles list",
     summary: "List your puzzles, newest edit first.",
     flags: {

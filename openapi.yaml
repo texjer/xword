@@ -2,8 +2,8 @@ openapi: 3.1.0
 
 info:
   title: Crossword Generator API
-  version: "1.1.0"
-  summary: Search words, find clues, fill grids, and publish puzzles in 28 languages.
+  version: "1.2.0"
+  summary: Search words, find clues, fill grids, and publish puzzles in 30 languages.
   description: |
     Use the same crossword tools as
     [crossword.texs.org](https://crossword.texs.org). You can search words, find
@@ -68,16 +68,16 @@ info:
     keys for abuse.
 
     1. **Give credit.** Link to [crossword.texs.org](https://crossword.texs.org)
-       and use the logo shown on the [docs page](https://crossword.texs.org/developers#rules).
+       and use the logo shown on the [docs page](https://crossword.texs.org/crossword-api#rules).
        Printed puzzles must show the logo or a credit line with the URL.
     2. **Do not impersonate anyone.** The `author` must be you, your site, a pen
        name, or someone who agreed to be credited.
     3. **Follow the content rules.** They apply to every field you publish.
     4. **Do not copy the full data set.** Do not rebuild the word lists or clue
-       collection by making many API calls. See the [data licenses](https://crossword.texs.org/developers#attribution).
+       collection by making many API calls. See the [data licenses](https://crossword.texs.org/crossword-api#attribution).
   contact:
     name: Crossword Generator
-    url: https://crossword.texs.org/developers
+    url: https://crossword.texs.org/crossword-api
   license:
     name: Terms of Service
     url: https://crossword.texs.org/terms
@@ -92,7 +92,7 @@ tags:
   - name: Meta
     description: Check the service and list languages. No key is needed.
   - name: Words
-    description: Search and score words in 28 languages.
+    description: Search and score words in 30 languages.
   - name: Clues
     description: Find saved clues or create new AI clues.
   - name: Solver
@@ -135,7 +135,7 @@ paths:
                   summary: Healthy, English resident
                   value:
                     status: ok
-                    version: "1.1.0"
+                    version: "1.2.0"
                     languages:
                       en: { available: true, loaded: true }
                       ru: { available: true, loaded: false }
@@ -144,7 +144,7 @@ paths:
                   summary: The solver could not be reached
                   value:
                     status: degraded
-                    version: "1.1.0"
+                    version: "1.2.0"
                     languages: {}
         "429":
           $ref: "#/components/responses/RateLimited"
@@ -597,7 +597,7 @@ paths:
               examples:
                 membersOnly:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#MEMBERS_ONLY"
+                    type: "https://crossword.texs.org/crossword-api/errors#MEMBERS_ONLY"
                     title: "Members only"
                     status: 403
                     code: MEMBERS_ONLY
@@ -617,7 +617,7 @@ paths:
               examples:
                 quota:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#AI_QUOTA_REACHED"
+                    type: "https://crossword.texs.org/crossword-api/errors#AI_QUOTA_REACHED"
                     title: "AI clue quota reached"
                     status: 429
                     code: AI_QUOTA_REACHED
@@ -656,8 +656,8 @@ paths:
         23×23. A fill or clean-up uses one monthly fill. This is true even when
         the solver finds no answer. `X-Fill-Quota-Remaining` shows the balance.
 
-        Chinese, Japanese, and Korean need criss-cross grids. The solver cannot
-        fill dense grids in those languages.
+        Chinese, Japanese, and Korean cannot fill a pattern you send. Use
+        `POST /fill/build` for a finished grid in those languages.
       tags: [Solver]
       x-required-scope: solve
       parameters:
@@ -810,7 +810,7 @@ paths:
               examples:
                 gridSize:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#GRID_SIZE_LOCKED"
+                    type: "https://crossword.texs.org/crossword-api/errors#GRID_SIZE_LOCKED"
                     title: "Grid size locked"
                     status: 403
                     code: GRID_SIZE_LOCKED
@@ -832,7 +832,7 @@ paths:
               examples:
                 busy:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#SOLVER_BUSY"
+                    type: "https://crossword.texs.org/crossword-api/errors#SOLVER_BUSY"
                     title: "Solver busy"
                     status: 429
                     code: SOLVER_BUSY
@@ -943,6 +943,119 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "429":
           description: "`RATE_LIMITED`, `FILL_QUOTA_REACHED`, or `SOLVER_BUSY`."
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          $ref: "#/components/responses/UpstreamUnavailable"
+
+  /fill/build:
+    post:
+      operationId: buildGrid
+      summary: Build a Chinese, Japanese, or Korean grid
+      description: |
+        Build a finished grid for a language where `crissCrossOnly` is `true`:
+        Chinese, Japanese, or Korean. Two words in these languages rarely share
+        a character, so `POST /fill` cannot fill a pattern you send. This
+        endpoint places the black cells and the answers together instead.
+
+        Send a size, not a grid. Add `theme_words` to work your own words in.
+        Words that do not fit come back in `missing`. Leave them out for a grid
+        of everyday words. A build takes 3 to 8 seconds.
+
+        Korean and Chinese grids are open lattices with many black cells.
+        Japanese grids follow the Nikoli rules: no two black cells touch, and
+        every word is in katakana. Hiragana theme words are converted.
+
+        A build that finds no grid returns `200` with `grid: null` and `reason`.
+        Try again, pick another size, or send fewer theme words. A build uses
+        one monthly fill, even when it finds no grid.
+      tags: [Solver]
+      x-required-scope: solve
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuildRequest"
+            examples:
+              korean:
+                summary: A 7×7 Korean grid with two theme words
+                value:
+                  language: ko
+                  size: 7
+                  theme_words: ["김치", "서울"]
+              japanese:
+                summary: A 7×7 Japanese grid; the hiragana theme word becomes katakana
+                value:
+                  language: ja
+                  size: 7
+                  theme_words: ["ねこ"]
+      responses:
+        "200":
+          description: The finished grid.
+          headers:
+            X-Fill-Quota-Remaining:
+              $ref: "#/components/headers/XFillQuotaRemaining"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildResult"
+              examples:
+                korean:
+                  summary: The `korean` request above
+                  value:
+                    grid:
+                      - "말장난#이성계"
+                      - "라#소유자#산"
+                      - "깽##기#증서"
+                      - "이#절체절명#"
+                      - "#친정##서울"
+                      - "전일#김##타"
+                      - "파파라치##리"
+                    placed: ["김치", "서울"]
+                    missing: []
+                japanese:
+                  summary: The `japanese` request above
+                  value:
+                    grid:
+                      - "オオザッパ#キ"
+                      - "ギイン#スター"
+                      - "ナ#ネコ#チ#"
+                      - "ウドン#タバコ"
+                      - "#ヨ#クイ#ウ"
+                      - "ソウシ#ハイチ"
+                      - "コ#ジテンシャ"
+                    placed: ["ネコ"]
+                    missing: []
+                noGrid:
+                  summary: No grid found
+                  description: |
+                    The request worked, but no grid fit. The fill still counts.
+                  value:
+                    grid: null
+                    placed: []
+                    missing: ["김치", "서울"]
+                    reason: no_solution
+        "400":
+          description: |
+            `VALIDATION_ERROR` (a language other than Chinese, Japanese, or
+            Korean, a bad size, or a theme word with other characters) or
+            `LANGUAGE_UNAVAILABLE`.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          description: "`FILL_QUOTA_REACHED` or `SOLVER_BUSY`."
           headers:
             Retry-After:
               $ref: "#/components/headers/RetryAfter"
@@ -1208,7 +1321,7 @@ paths:
               examples:
                 badGrid:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    type: "https://crossword.texs.org/crossword-api/errors#VALIDATION_ERROR"
                     title: Validation error
                     status: 400
                     code: VALIDATION_ERROR
@@ -1217,7 +1330,7 @@ paths:
                 notPublishable:
                   summary: "`publish: true` on a puzzle that is not ready"
                   value:
-                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    type: "https://crossword.texs.org/crossword-api/errors#VALIDATION_ERROR"
                     title: Validation error
                     status: 400
                     code: VALIDATION_ERROR
@@ -1254,7 +1367,7 @@ paths:
               examples:
                 quota:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#PUZZLE_QUOTA_REACHED"
+                    type: "https://crossword.texs.org/crossword-api/errors#PUZZLE_QUOTA_REACHED"
                     title: "Puzzle quota reached"
                     status: 429
                     code: PUZZLE_QUOTA_REACHED
@@ -1507,7 +1620,7 @@ paths:
               examples:
                 notPublishable:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    type: "https://crossword.texs.org/crossword-api/errors#VALIDATION_ERROR"
                     title: Validation error
                     status: 400
                     code: VALIDATION_ERROR
@@ -1535,7 +1648,7 @@ paths:
               examples:
                 full:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#SHOWCASE_QUEUE_FULL"
+                    type: "https://crossword.texs.org/crossword-api/errors#SHOWCASE_QUEUE_FULL"
                     title: "Showcase queue full"
                     status: 409
                     code: SHOWCASE_QUEUE_FULL
@@ -1563,9 +1676,10 @@ paths:
 
         `pdf` is one printable page — title, grid and clues in four columns,
         with a QR link to the puzzle page once it is published — on US Letter
-        or A4 (`paper`). Add `solution=true` for the answer key. Languages
-        written in CJK, Devanagari or Thai scripts cannot be rendered as PDF
-        yet and return `400`; use `svg` or `html` for those.
+        or A4 (`paper`). Add `solution=true` for the answer key. Korean,
+        Japanese and Chinese are supported. Languages written in Devanagari or
+        Thai script cannot be rendered as PDF yet and return `400`; use `svg`
+        or `html` for those.
 
         `svg` is the numbered grid alone as one scalable vector image, with
         no clues, for laying out your own page (books, newsletters, large
@@ -1634,7 +1748,7 @@ paths:
           description: |
             `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
             in ISO-8859-1, `html` requested for a puzzle with empty cells or
-            unclued entries, `pdf` requested for a script with no bundled font,
+            unclued entries, `pdf` requested for a Devanagari or Thai puzzle,
             or an unknown `paper`.
           content:
             application/problem+json:
@@ -1643,7 +1757,7 @@ paths:
               examples:
                 notPuzExportable:
                   value:
-                    type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                    type: "https://crossword.texs.org/crossword-api/errors#VALIDATION_ERROR"
                     title: "Validation error"
                     status: 400
                     code: VALIDATION_ERROR
@@ -1751,7 +1865,7 @@ components:
           examples:
             noKey:
               value:
-                type: "https://crossword.texs.org/developers/errors#UNAUTHORIZED"
+                type: "https://crossword.texs.org/crossword-api/errors#UNAUTHORIZED"
                 title: Unauthorized
                 status: 401
                 code: UNAUTHORIZED
@@ -1765,7 +1879,7 @@ components:
           examples:
             scope:
               value:
-                type: "https://crossword.texs.org/developers/errors#FORBIDDEN_SCOPE"
+                type: "https://crossword.texs.org/crossword-api/errors#FORBIDDEN_SCOPE"
                 title: Forbidden
                 status: 403
                 code: FORBIDDEN_SCOPE
@@ -1780,7 +1894,7 @@ components:
           examples:
             missing:
               value:
-                type: "https://crossword.texs.org/developers/errors#NOT_FOUND"
+                type: "https://crossword.texs.org/crossword-api/errors#NOT_FOUND"
                 title: Not found
                 status: 404
                 code: NOT_FOUND
@@ -1794,7 +1908,7 @@ components:
           examples:
             badGrid:
               value:
-                type: "https://crossword.texs.org/developers/errors#VALIDATION_ERROR"
+                type: "https://crossword.texs.org/crossword-api/errors#VALIDATION_ERROR"
                 title: Validation error
                 status: 400
                 code: VALIDATION_ERROR
@@ -1816,7 +1930,7 @@ components:
           examples:
             limited:
               value:
-                type: "https://crossword.texs.org/developers/errors#RATE_LIMITED"
+                type: "https://crossword.texs.org/crossword-api/errors#RATE_LIMITED"
                 title: Rate limited
                 status: 429
                 code: RATE_LIMITED
@@ -1832,7 +1946,7 @@ components:
           examples:
             down:
               value:
-                type: "https://crossword.texs.org/developers/errors#UPSTREAM_UNAVAILABLE"
+                type: "https://crossword.texs.org/crossword-api/errors#UPSTREAM_UNAVAILABLE"
                 title: Upstream unavailable
                 status: 503
                 code: UPSTREAM_UNAVAILABLE
@@ -1846,7 +1960,7 @@ components:
         Puzzle language code. You may send `pt-BR`, but the API returns `pt`.
         Both use the same Portuguese data.
       enum:
-        [en, es, fr, de, it, pt, pt-BR, pl, nl, zh, ja, ko, hi, ar, tr, he, id, cs, uk, ro, ru, sv, no, da, hr, ca, el, bg, fi]
+        [en, es, fr, de, it, pt, pt-BR, pl, nl, zh, ja, ko, hi, ar, tr, he, id, cs, uk, ro, ru, sv, no, da, hr, ca, el, bg, fi, hu, gl]
       example: en
 
     Language:
@@ -1871,8 +1985,9 @@ components:
         crissCrossOnly:
           type: boolean
           description: |
-            `true` for Chinese, Japanese, and Korean. Build these as criss-cross
-            grids. `POST /fill` cannot fill a dense grid for them.
+            `true` for Chinese, Japanese, and Korean. `POST /fill` cannot fill a
+            pattern for them. Use `POST /fill/build` for a finished grid, or
+            lay the words out as a criss-cross.
         rtl:
           type: boolean
           description: |
@@ -1966,7 +2081,7 @@ components:
           type: string
           format: uri
           description: Link to the documentation for this error code.
-          example: "https://crossword.texs.org/developers/errors#RATE_LIMITED"
+          example: "https://crossword.texs.org/crossword-api/errors#RATE_LIMITED"
         title:
           type: string
           description: Short, human-readable summary of the problem type.
@@ -2188,6 +2303,55 @@ components:
         sessionId:
           type: string
           description: Also returned in `X-Fill-Session-Id`. Usable with `POST /fill/cancel`.
+
+    BuildRequest:
+      type: object
+      required: [language]
+      properties:
+        language:
+          type: string
+          enum: [ko, zh, ja]
+          description: Korean, Chinese, or Japanese.
+        size:
+          type: integer
+          enum: [7, 9, 11, 13]
+          default: 11
+          description: Grid width and height.
+        theme_words:
+          type: array
+          maxItems: 30
+          description: |
+            Words to work in, 2 to 13 characters each. Words that do not fit
+            are listed in `missing`.
+          items:
+            type: string
+
+    BuildResult:
+      type: object
+      description: |
+        A finished grid. `grid` is `null` when no grid fit, and `reason` is
+        set.
+      required: [grid, placed, missing]
+      properties:
+        grid:
+          description: Every white cell is filled. `null` when no grid fit.
+          oneOf:
+            - $ref: "#/components/schemas/Grid"
+            - type: "null"
+        placed:
+          type: array
+          items:
+            type: string
+          description: Theme words in the grid, in the spelling the grid uses.
+        missing:
+          type: array
+          items:
+            type: string
+          description: Theme words that did not fit.
+        reason:
+          type: string
+          enum: [no_solution]
+          description: Present when `grid` is `null`.
 
     ImproveResult:
       type: object

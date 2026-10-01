@@ -208,8 +208,8 @@ export interface paths {
          *     23×23. A fill or clean-up uses one monthly fill. This is true even when
          *     the solver finds no answer. `X-Fill-Quota-Remaining` shows the balance.
          *
-         *     Chinese, Japanese, and Korean need criss-cross grids. The solver cannot
-         *     fill dense grids in those languages.
+         *     Chinese, Japanese, and Korean cannot fill a pattern you send. Use
+         *     `POST /fill/build` for a finished grid in those languages.
          */
         post: operations["fillGrid"];
         delete?: never;
@@ -240,6 +240,41 @@ export interface paths {
          *     words cannot be changed. A clean-up uses one monthly fill.
          */
         post: operations["improveFill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fill/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build a Chinese, Japanese, or Korean grid
+         * @description Build a finished grid for a language where `crissCrossOnly` is `true`:
+         *     Chinese, Japanese, or Korean. Two words in these languages rarely share
+         *     a character, so `POST /fill` cannot fill a pattern you send. This
+         *     endpoint places the black cells and the answers together instead.
+         *
+         *     Send a size, not a grid. Add `theme_words` to work your own words in.
+         *     Words that do not fit come back in `missing`. Leave them out for a grid
+         *     of everyday words. A build takes 3 to 8 seconds.
+         *
+         *     Korean and Chinese grids are open lattices with many black cells.
+         *     Japanese grids follow the Nikoli rules: no two black cells touch, and
+         *     every word is in katakana. Hiragana theme words are converted.
+         *
+         *     A build that finds no grid returns `200` with `grid: null` and `reason`.
+         *     Try again, pick another size, or send fewer theme words. A build uses
+         *     one monthly fill, even when it finds no grid.
+         */
+        post: operations["buildGrid"];
         delete?: never;
         options?: never;
         head?: never;
@@ -294,8 +329,8 @@ export interface paths {
          *
          *     `publish: true` makes an unlisted public puzzle. It does not submit the
          *     puzzle to the showcase. Use `POST /puzzles/{id}/publish` with
-         *     `submitToShowcase: true` for that. Unlisted puzzles are hidden from
-         *     search engines unless you set `noIndex: false`.
+         *     `submitToShowcase: true` for that. Unlisted puzzles are never
+         *     indexed by search engines; only showcase puzzles are.
          *
          *     Use `Idempotency-Key` to prevent copies when a request is sent twice.
          *     Reuse the same value for the same puzzle. A repeat returns the first
@@ -370,8 +405,8 @@ export interface paths {
          *
          *     The puzzle is unlisted unless you send `submitToShowcase: true`. A
          *     person reviews every API showcase request; nothing is listed
-         *     automatically, so send your best work. An unlisted puzzle is hidden
-         *     from search engines unless you set `noIndex: false`.
+         *     automatically, so send your best work. An unlisted puzzle is never
+         *     indexed by search engines; only showcase puzzles are.
          *
          *     An account can have up to three puzzles waiting for showcase review. A
          *     fourth returns `409 SHOWCASE_QUEUE_FULL` and changes nothing.
@@ -409,9 +444,10 @@ export interface paths {
          *
          *     `pdf` is one printable page — title, grid and clues in four columns,
          *     with a QR link to the puzzle page once it is published — on US Letter
-         *     or A4 (`paper`). Add `solution=true` for the answer key. Languages
-         *     written in CJK, Devanagari or Thai scripts cannot be rendered as PDF
-         *     yet and return `400`; use `svg` or `html` for those.
+         *     or A4 (`paper`). Add `solution=true` for the answer key. Korean,
+         *     Japanese and Chinese are supported. Languages written in Devanagari or
+         *     Thai script cannot be rendered as PDF yet and return `400`; use `svg`
+         *     or `html` for those.
          *
          *     `svg` is the numbered grid alone as one scalable vector image, with
          *     no clues, for laying out your own page (books, newsletters, large
@@ -438,7 +474,7 @@ export interface components {
          * @example en
          * @enum {string}
          */
-        LanguageCode: "en" | "es" | "fr" | "de" | "it" | "pt" | "pt-BR" | "pl" | "nl" | "zh" | "ja" | "ko" | "hi" | "ar" | "tr" | "he" | "id" | "cs" | "uk" | "ro" | "ru" | "sv" | "no" | "da" | "hr" | "ca" | "el" | "bg" | "fi";
+        LanguageCode: "en" | "es" | "fr" | "de" | "it" | "pt" | "pt-BR" | "pl" | "nl" | "zh" | "ja" | "ko" | "hi" | "ar" | "tr" | "he" | "id" | "cs" | "uk" | "ro" | "ru" | "sv" | "no" | "da" | "hr" | "ca" | "el" | "bg" | "fi" | "hu" | "gl";
         /** @description One entry in the language registry. */
         Language: {
             code: components["schemas"]["LanguageCode"];
@@ -455,8 +491,9 @@ export interface components {
             /** @description `true` when word search and fill work for this language. */
             available: boolean;
             /**
-             * @description `true` for Chinese, Japanese, and Korean. Build these as criss-cross
-             *     grids. `POST /fill` cannot fill a dense grid for them.
+             * @description `true` for Chinese, Japanese, and Korean. `POST /fill` cannot fill a
+             *     pattern for them. Use `POST /fill/build` for a finished grid, or
+             *     lay the words out as a criss-cross.
              */
             crissCrossOnly: boolean;
             /**
@@ -546,7 +583,7 @@ export interface components {
             /**
              * Format: uri
              * @description Link to the documentation for this error code.
-             * @example https://crossword.texs.org/developers/errors#RATE_LIMITED
+             * @example https://crossword.texs.org/crossword-api/errors#RATE_LIMITED
              */
             type: string;
             /** @description Short, human-readable summary of the problem type. */
@@ -711,6 +748,41 @@ export interface components {
             /** @description Also returned in `X-Fill-Session-Id`. Usable with `POST /fill/cancel`. */
             sessionId?: string;
         };
+        BuildRequest: {
+            /**
+             * @description Korean, Chinese, or Japanese.
+             * @enum {string}
+             */
+            language: "ko" | "zh" | "ja";
+            /**
+             * @description Grid width and height.
+             * @default 11
+             * @enum {integer}
+             */
+            size?: 7 | 9 | 11 | 13;
+            /**
+             * @description Words to work in, 2 to 13 characters each. Words that do not fit
+             *     are listed in `missing`.
+             */
+            theme_words?: string[];
+        };
+        /**
+         * @description A finished grid. `grid` is `null` when no grid fit, and `reason` is
+         *     set.
+         */
+        BuildResult: {
+            /** @description Every white cell is filled. `null` when no grid fit. */
+            grid: components["schemas"]["Grid"] | null;
+            /** @description Theme words in the grid, in the spelling the grid uses. */
+            placed: string[];
+            /** @description Theme words that did not fit. */
+            missing: string[];
+            /**
+             * @description Present when `grid` is `null`.
+             * @enum {string}
+             */
+            reason?: "no_solution";
+        };
         /**
          * @description The clean-up result. `improved: false` with no `grid` means nothing
          *     changed. The fill was already clean, or locked cells forced the weak word.
@@ -844,7 +916,10 @@ export interface components {
             writeup?: string;
             /** @description Whether this puzzle is linked from the author's public page. */
             showProfile?: boolean;
-            /** @description Author asked search engines to skip the puzzle page. */
+            /**
+             * @description Author asked search engines to skip the puzzle page. Unlisted
+             *     puzzles are never indexed regardless of this flag.
+             */
             noIndex?: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -1420,6 +1495,57 @@ export interface operations {
             503: components["responses"]["UpstreamUnavailable"];
         };
     };
+    buildGrid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuildRequest"];
+            };
+        };
+        responses: {
+            /** @description The finished grid. */
+            200: {
+                headers: {
+                    "X-Fill-Quota-Remaining": components["headers"]["XFillQuotaRemaining"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildResult"];
+                };
+            };
+            /**
+             * @description `VALIDATION_ERROR` (a language other than Chinese, Japanese, or
+             *     Korean, a bad size, or a theme word with other characters) or
+             *     `LANGUAGE_UNAVAILABLE`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `FILL_QUOTA_REACHED` or `SOLVER_BUSY`. */
+            429: {
+                headers: {
+                    "Retry-After": components["headers"]["RetryAfter"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            503: components["responses"]["UpstreamUnavailable"];
+        };
+    };
     cancelFill: {
         parameters: {
             query?: never;
@@ -1703,7 +1829,10 @@ export interface operations {
                     writeup?: string;
                     /** @description Link this puzzle from your public author page. */
                     showProfile?: boolean;
-                    /** @description Hide the page from search engines. The share link still works. */
+                    /**
+                     * @description Keep the page out of search engines even once it is in the
+                     *     showcase. Unlisted puzzles are never indexed regardless.
+                     */
                     noIndex?: boolean;
                     /**
                      * @description Enter the public showcase review queue. Off by default.
@@ -1808,7 +1937,7 @@ export interface operations {
             /**
              * @description `VALIDATION_ERROR`: `.puz` requested for a language that cannot be encoded
              *     in ISO-8859-1, `html` requested for a puzzle with empty cells or
-             *     unclued entries, `pdf` requested for a script with no bundled font,
+             *     unclued entries, `pdf` requested for a Devanagari or Thai puzzle,
              *     or an unknown `paper`.
              */
             400: {

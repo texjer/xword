@@ -27,7 +27,9 @@ export type PuzzleLanguage =
   | "ca"
   | "el"
   | "bg"
-  | "fi";
+  | "fi"
+  | "hu"
+  | "gl";
 
 export interface AlphabetConfig {
   code: PuzzleLanguage;
@@ -51,8 +53,10 @@ export interface AlphabetConfig {
   // These languages segment words into grapheme clusters instead of codepoints.
   graphemeClusters?: boolean;
   // Large glyph inventories (CJK, Devanagari) can't fill a dense interlocking
-  // grid — two words almost never share a glyph at a crossing. These build only
-  // as criss-cross (words join where they happen to share a glyph, rest floats).
+  // grid — two words almost never share a glyph at a crossing — so the solver
+  // and Auto-Fill never see them. In the editor they build as a criss-cross or
+  // as a 7–13 grid grown whole by the backend (app/solver/lattice.py), which
+  // the public API offers as `POST /v1/fill/build`.
   crissCrossOnly?: boolean;
   // Whether this alphabet survives a classic `.puz` export. The writer is
   // single-byte (ISO-8859-1), so Latin scripts (incl. accents/umlauts, which
@@ -197,6 +201,30 @@ export const ALPHABET_CONFIGS: Record<PuzzleLanguage, AlphabetConfig> = {
     code: "fi", name: "Finnish", nativeName: "Suomi", alphabet: `${LATIN}ÅÄÖ`,
     fold: { Š: "S", š: "S", Ž: "Z", ž: "Z" }, databaseAvailable: true, puzExportable: true,
     placeholderWords: ["KUU", "MARS", "KOMEETTA", "MAAPALLO", "KIERTORATA"],
+  },
+  // Hungarian: Ö and Ü are letters; long vowels share a cell with short ones,
+  // as in every keresztrejtvény — Á/É/Í/Ó/Ú fold to A/E/I/O/U and Ő/Ű to Ö/Ü
+  // (ÖR "guard" and OR "nose" stay apart). Õ/Ô/Û are the Latin-1 code-page
+  // spellings of Ő/Ű that old subtitle files and keyboards still produce.
+  // Digraphs (CS, GY, SZ, ZS…) take one cell per letter. After the fold every
+  // letter is Latin-1, so `.puz` export works.
+  hu: {
+    code: "hu", name: "Hungarian", nativeName: "Magyar", alphabet: `${LATIN}ÖÜ`,
+    fold: {
+      Á: "A", É: "E", Í: "I", Ó: "O", Ú: "U", Ő: "Ö", Ű: "Ü",
+      Õ: "Ö", Ô: "Ö", Û: "Ü",
+    },
+    databaseAvailable: true, puzExportable: true,
+    placeholderWords: ["HOLD", "MARS", "ÜSTÖKÖS", "BOLYGO", "CSILLAG"],
+  },
+  // Galician: Ñ is a letter, as in Spanish (SONO "sleep", SOÑO "dream");
+  // acute accents and the diaeresis fold away, as in every encrucillado.
+  // Ñ is Latin-1, so `.puz` export works.
+  gl: {
+    code: "gl", name: "Galician", nativeName: "Galego", alphabet: `${LATIN}Ñ`,
+    fold: { Á: "A", É: "E", Í: "I", Ó: "O", Ú: "U", Ü: "U" },
+    databaseAvailable: true, puzExportable: true,
+    placeholderWords: ["LUA", "MARTE", "COMETA", "PLANETA", "ESTRELA"],
   },
 };
 

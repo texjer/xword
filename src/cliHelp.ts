@@ -4,7 +4,7 @@
  */
 import { COMMANDS, GLOBAL_FLAGS, type CommandSpec, type FlagSpec } from "./cliArgs.js";
 
-export const VERSION = "0.1.4";
+export const VERSION = "0.1.5";
 
 function flagLine(name: string, spec: FlagSpec): string {
   const rendered =
@@ -56,7 +56,7 @@ export function topLevelHelp(): string {
     "  xword <command> [args] [--flags]",
     ...group("Account", ["login", "logout", "status"]),
     ...group("Lookup", ["languages", "words", "clues", "scores"]),
-    ...group("Building", ["pattern", "fill", "improve", "generate-clues"]),
+    ...group("Building", ["pattern", "fill", "improve", "build", "generate-clues"]),
     ...group("Puzzles", [
       "puzzles list",
       "puzzles get",

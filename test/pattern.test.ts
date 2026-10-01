@@ -52,9 +52,10 @@ describe("generateAmericanPattern", () => {
         expect(slots.length).toBeGreaterThan(0);
         // The web app's own "can this be filled?" check must pass.
         expect(unfillableReason(slots, numbered)).toBeNull();
-        // The generator breaks any run longer than 7 so the word list is deep
-        // enough at every length; a longer entry means that loop gave up.
-        expect(Math.max(...slots.map((s) => s.length))).toBeLessThanOrEqual(7);
+        // The generator breaks any run longer than 7 (8 past 15×15, where the
+        // 3–7 rule can't be met) so the word list is deep enough at every
+        // length; a longer entry means that loop gave up.
+        expect(Math.max(...slots.map((s) => s.length))).toBeLessThanOrEqual(size <= 15 ? 7 : 8);
         // Every white cell is checked — it belongs to both an across and a down
         // entry — which is what makes it an American grid.
         const covered = new Set<string>();

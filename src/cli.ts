@@ -624,6 +624,41 @@ async function cmdImprove(io: Io, args: string[], flags: FlagValues): Promise<nu
   return 0;
 }
 
+async function cmdBuild(io: Io, flags: FlagValues): Promise<number> {
+  const language = str(flags, "lang");
+  if (language !== "ko" && language !== "zh" && language !== "ja") {
+    throw new UsageError("build needs --lang ko, zh or ja. Other languages use `xword fill`.", "build");
+  }
+  const client = makeClient(io, flags, true);
+  const theme_words = list(flags, "theme")
+    .flatMap((value) => value.split(","))
+    .map((word) => word.trim())
+    .filter(Boolean);
+
+  const result = await client.buildGrid({
+    language,
+    size: num(flags, "size") as 7 | 9 | 11 | 13 | undefined,
+    theme_words,
+  });
+
+  if (bool(flags, "json")) {
+    emitJson(io, result);
+    return result.grid ? 0 : 1;
+  }
+  if (!result.grid) {
+    io.err("No grid fit. Try again, another --size, or fewer --theme words.\n");
+    return 1;
+  }
+  if (theme_words.length > 0) {
+    io.err(
+      `placed=${result.placed.length}/${theme_words.length}` +
+        `${result.missing.length ? ` missing=${result.missing.join(",")}` : ""}\n`
+    );
+  }
+  writeOut(io, formatGridText(result.grid), str(flags, "out"), bool(flags, "quiet"), "Grid");
+  return 0;
+}
+
 async function cmdPuzzlesList(io: Io, flags: FlagValues): Promise<number> {
   const client = makeClient(io, flags, true);
   const result = await client.listPuzzles({
@@ -890,6 +925,8 @@ export async function run(argv: string[], io: Io = nodeIo): Promise<number> {
         return await cmdFill(io, args, flags);
       case "improve":
         return await cmdImprove(io, args, flags);
+      case "build":
+        return await cmdBuild(io, flags);
       case "puzzles list":
         return await cmdPuzzlesList(io, flags);
       case "puzzles get":

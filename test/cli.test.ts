@@ -406,6 +406,12 @@ describe("fill input handling", () => {
     expect(io.err()).toContain("black square");
   });
 
+  it("build refuses a language fill can handle", async () => {
+    const io = fakeIo({ env: { CROSSWORD_API_KEY: "cw_live_x" } });
+    expect(await run(["build", "--lang", "en", "--base", "http://127.0.0.1:1/api/v1"], io.io)).toBe(2);
+    expect(io.err()).toContain("xword fill");
+  });
+
   it("reads a grid from stdin when the path is -", async () => {
     const io = fakeIo({
       env: { CROSSWORD_API_KEY: "cw_live_x" },

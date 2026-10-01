@@ -420,7 +420,11 @@ const WORKFLOW = `End-to-end: build a puzzle and hand back an embed snippet.
    review queue — only pass it when the user asked for it. The result carries
    \`url\`, \`embedUrl\` and a paste-ready \`embedSnippet\`.
 
-Quotas worth remembering: fill_grid and improve_fill each cost one unit of the
+Chinese, Japanese and Korean skip steps 1–4: fill_grid cannot fill a pattern
+in them. Call build_grid (SPENDS one fill unit) with a size and any theme words
+instead, then carry on from step 5.
+
+Quotas worth remembering: fill_grid, improve_fill and build_grid each cost one unit of the
 monthly fill allowance whether or not they succeed — a fill that comes back
 with nothing still costs a unit, so do not retry blindly. Reads (words, clues
 lookup, puzzles) are free beyond a per-minute rate limit.`;
@@ -505,7 +509,7 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
         "The 24 puzzle languages and the constraints that decide what you can build " +
         "in each: `available` (a word database is deployed — false means search and " +
         "fill will fail), `crissCrossOnly` (Chinese, Japanese and Korean cannot fill " +
-        "dense interlocking grids at all), `rtl`, `puzExportable` (.puz is single-byte " +
+        "a pattern — use build_grid for them), `rtl`, `puzExportable` (.puz is single-byte " +
         "Latin only), and `minSlotLength`. Free, needs no API key. Call this before " +
         "building in any language other than English.",
       inputSchema: {
@@ -850,6 +854,54 @@ export function createMcpServer(options: McpServerOptions = {}): McpServer {
           ...improved,
           grid: finalGrid,
           entries: gridEntries(finalGrid, language),
+          quota: quota(),
+        }
+      );
+    })
+  );
+
+  server.registerTool(
+    "build_grid",
+    {
+      title: "Build a Chinese, Japanese or Korean grid",
+      description:
+        "A finished grid for Korean (ko), Chinese (zh) or Japanese (ja), the languages " +
+        "where fill_grid cannot fill a pattern: two words almost never share a " +
+        "character at a crossing. This places the black cells and the answers " +
+        "together and works in as many `theme_words` as fit; the rest come back in " +
+        "`missing`. Korean and Chinese grids are open lattices; Japanese grids follow " +
+        "the Nikoli rules in katakana (hiragana theme words are converted).\n\n" +
+        "**SPENDS one unit of the monthly fill allowance**, even when nothing fits. " +
+        "Takes 3–8 seconds. `grid: null` means no grid fit at that size — try another " +
+        "size or fewer theme words. Clue the result with lookup_clues_bulk as usual.",
+      inputSchema: {
+        language: z.enum(["ko", "zh", "ja"]).describe("Korean, Chinese or Japanese."),
+        size: z
+          .union([z.literal(7), z.literal(9), z.literal(11), z.literal(13)])
+          .default(11)
+          .describe("Grid width and height."),
+        theme_words: z
+          .array(z.string())
+          .max(30)
+          .default([])
+          .describe("Words to work in, 2-13 characters each."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+    },
+    guard(async ({ language, size, theme_words }) => {
+      const built = await client.buildGrid({ language, size, theme_words });
+      if (!built.grid) {
+        return result("No grid fit. Try another size or fewer theme words.", {
+          ...built,
+          quota: quota(),
+        });
+      }
+      return result(
+        `Built a ${size}×${size} grid` +
+          (theme_words.length ? `; placed ${built.placed.length} of ${theme_words.length} theme words.` : "."),
+        {
+          ...built,
+          entries: gridEntries(built.grid, language),
           quota: quota(),
         }
       );

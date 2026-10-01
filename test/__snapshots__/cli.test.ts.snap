@@ -31,7 +31,7 @@ Global options
 `;
 
 exports[`help output > top-level help is stable 1`] = `
-"xword 0.1.4 — the Crossword Generator CLI
+"xword 0.1.5 — the Crossword Generator CLI
 
 Usage
   xword <command> [args] [--flags]
@@ -51,6 +51,7 @@ Building
   pattern          Generate a symmetric black-square pattern. Runs locally.
   fill             Auto-fill a grid. Spends one unit of the monthly fill quota.
   improve          Clean up a filled grid. Spends one unit of the monthly fill quota.
+  build            Build a whole Korean, Chinese or Japanese grid. Spends one fill.
   generate-clues   Write fresh AI clues. Members only; spends the AI clue allowance.
 
 Puzzles

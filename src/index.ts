@@ -36,6 +36,8 @@ export {
   type FillResult,
   type ImproveRequest,
   type ImproveResult,
+  type BuildRequest,
+  type BuildResult,
   type FillEvent,
   type FillSessionEvent,
   type FillProgressEvent,

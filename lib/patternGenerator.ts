@@ -9,10 +9,25 @@ export interface PatternInfo {
   wordCount: number;
   blackPercent: number;
   name: string;
+  /** Every attempt failed and `grid` is a blank (all-white) stand-in. Callers
+   *  must not use it as a pattern. */
+  failed?: boolean;
 }
 
 const MIN_WORD_LENGTH = 3;
 const MAX_WORD_LENGTH = 7;
+
+// Longest entry the American/freeform generators allow. 7 keeps 15×15 grids
+// fillable from the word list; bigger grids get a little more reach, or the
+// 3–7 rule can't be met at all and every attempt fails (it did at 21×21+).
+function maxWordLength(size: number): number {
+  return size <= 15 ? MAX_WORD_LENGTH : MAX_WORD_LENGTH + LARGE_GRID_EXTRA;
+}
+const LARGE_GRID_EXTRA = 1;
+
+// Attempts that must fail with clean cuts before breakLongRuns may black out stubs.
+const STUB_CUTS_AFTER = 10;
+const MAX_STUB_BLACKS = 6;
 
 // --- Pattern naming ---
 
@@ -153,6 +168,113 @@ function findLongestRun(grid: CellState[][], size: number, max = MAX_WORD_LENGTH
   }
 
   return best;
+}
+
+// Every run longer than `max`, longest first.
+function findLongRuns(grid: CellState[][], size: number, max: number): [number, number][][] {
+  const runs: [number, number][][] = [];
+  for (const across of [true, false]) {
+    for (let a = 0; a < size; a++) {
+      let run: [number, number][] = [];
+      for (let b = 0; b <= size; b++) {
+        const [r, c] = across ? [a, b] : [b, a];
+        if (b < size && grid[r][c].type === "white") {
+          run.push([r, c]);
+        } else {
+          if (run.length > max) runs.push(run);
+          run = [];
+        }
+      }
+    }
+  }
+  return runs.sort((x, y) => y.length - x.length);
+}
+
+// Cuts every run longer than `max` with a black square, keeping all entries
+// ≥3 and the grid connected. A run with no legal cut is skipped rather than
+// ending the pass (the old loop quit on the first stuck run, which on 21×21
+// and up meant nearly every attempt failed); cutting a neighbouring run often
+// frees it on the next sweep. Returns whether every long run was cut.
+function breakLongRuns(
+  grid: CellState[][],
+  size: number,
+  max: number,
+  symmetric: boolean,
+  allowStubs = true
+): boolean {
+  const set = symmetric ? setBlackSymmetric : (g: CellState[][], r: number, c: number) => setBlackSingle(g, r, c);
+  const clear = symmetric ? clearCellSymmetric : (g: CellState[][], r: number, c: number) => clearCellSingle(g, r, c);
+  for (let sweep = 0; sweep < size * size; sweep++) {
+    const runs = findLongRuns(grid, size, max);
+    if (runs.length === 0) return true;
+    let cut = false;
+    for (const run of runs) {
+      const positions = run.filter((_, i) => i >= MIN_WORD_LENGTH && i <= run.length - MIN_WORD_LENGTH - 1);
+      shuffle(positions);
+      for (const [r, c] of positions) {
+        set(grid, r, c, size);
+        if (checkMinWordLength(grid, size) && isConnected(grid, size)) {
+          cut = true;
+          break;
+        }
+        clear(grid, r, c, size);
+      }
+      if (cut) break;
+    }
+    // No clean cut anywhere: accept one that strands 1–2 letter stubs, and
+    // black those out too (costs extra blacks, so callers allow it only after
+    // their clean attempts have had a go). Random fills (freeform) box runs in so tightly
+    // that this is usually the only way through.
+    if (!cut && allowStubs) {
+      for (const run of runs) {
+        const positions = run.filter((_, i) => i >= MIN_WORD_LENGTH && i <= run.length - MIN_WORD_LENGTH - 1);
+        shuffle(positions);
+        for (const [r, c] of positions) {
+          const saved = grid.map((row) => row.slice());
+          const before = countBlacks(grid, size);
+          set(grid, r, c, size);
+          fillShortRuns(grid, size, set);
+          // A cascade that blacks out more than a couple of stubs leaves a blob.
+          if (countBlacks(grid, size) - before <= MAX_STUB_BLACKS && checkMinWordLength(grid, size) && isConnected(grid, size)) {
+            cut = true;
+            break;
+          }
+          for (let i = 0; i < size; i++) grid[i] = saved[i];
+        }
+        if (cut) break;
+      }
+    }
+    if (!cut) return false;
+  }
+  return findLongRuns(grid, size, max).length === 0;
+}
+
+// Blacks out every run shorter than MIN_WORD_LENGTH until none remain.
+function fillShortRuns(
+  grid: CellState[][],
+  size: number,
+  set: (g: CellState[][], r: number, c: number, size: number) => void
+) {
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const across of [true, false]) {
+      for (let a = 0; a < size; a++) {
+        let run: [number, number][] = [];
+        for (let b = 0; b <= size; b++) {
+          const [r, c] = across ? [a, b] : [b, a];
+          if (b < size && grid[r][c].type === "white") {
+            run.push([r, c]);
+          } else {
+            if (run.length > 0 && run.length < MIN_WORD_LENGTH) {
+              for (const [rr, cc] of run) set(grid, rr, cc, size);
+              changed = true;
+            }
+            run = [];
+          }
+        }
+      }
+    }
+  }
 }
 
 function countBlacks(grid: CellState[][], size: number): number {
@@ -309,34 +431,13 @@ function clearCellSingle(grid: CellState[][], r: number, c: number) {
 
 export function generateAmericanPattern(size: number): PatternInfo {
   const targetBlacks = size <= 5 ? randomInt(0, 4) : size <= 11 ? randomInt(20, 26) : size <= 15 ? randomInt(44, 50) : randomInt(72, 82);
-  const maxLongWords = size <= 11 ? 999 : 20;
+  const maxLongWords = size <= 11 ? 999 : size <= 15 ? 20 : Math.round(20 * (size * size) / 225);
+  const maxLen = maxWordLength(size);
 
   for (let attempt = 0; attempt < 200; attempt++) {
     const grid = createGrid(size);
 
-    for (let breakAttempt = 0; breakAttempt < 100; breakAttempt++) {
-      const longest = findLongestRun(grid, size);
-      if (!longest) break;
-
-      const validPositions = longest.cells.filter((_, i) =>
-        i >= MIN_WORD_LENGTH && i <= longest.length - MIN_WORD_LENGTH - 1
-      );
-      shuffle(validPositions);
-
-      let placed = false;
-      for (const [r, c] of validPositions) {
-        setBlackSymmetric(grid, r, c, size);
-        if (checkMinWordLength(grid, size) && isConnected(grid, size)) {
-          placed = true;
-          break;
-        }
-        clearCellSymmetric(grid, r, c, size);
-      }
-
-      if (!placed) break;
-    }
-
-    if (findLongestRun(grid, size)) continue;
+    if (!breakLongRuns(grid, size, maxLen, true, attempt >= STUB_CUTS_AFTER)) continue;
 
     const mid = Math.floor(size / 2);
     const candidates: [number, number][] = [];
@@ -355,18 +456,18 @@ export function generateAmericanPattern(size: number): PatternInfo {
       if (grid[sr][sc].type === "black") continue;
 
       setBlackSymmetric(grid, r, c, size);
-      if (!checkMinWordLength(grid, size) || !isConnected(grid, size) || findLongestRun(grid, size)) {
+      if (!checkMinWordLength(grid, size) || !isConnected(grid, size) || findLongestRun(grid, size, maxLen)) {
         clearCellSymmetric(grid, r, c, size);
       }
     }
 
     const blacks = countBlacks(grid, size);
-    if (blacks >= targetBlacks - 6 && isConnected(grid, size) && checkMinWordLength(grid, size) && !findLongestRun(grid, size) && countLongWords(grid, size) <= maxLongWords) {
+    if (blacks >= targetBlacks - 6 && isConnected(grid, size) && checkMinWordLength(grid, size) && !findLongestRun(grid, size, maxLen) && countLongWords(grid, size) <= maxLongWords) {
       return makePatternInfo(grid, size, "american");
     }
   }
 
-  return makePatternInfo(createGrid(size), size, "american");
+  return { ...makePatternInfo(createGrid(size), size, "american"), failed: true };
 }
 
 // --- British (Guardian) style ---
@@ -495,7 +596,7 @@ export function generateBritishPattern(
   density: "standard" | "sparse" = "standard"
 ): PatternInfo {
   // Guardian lattices need room; below 9×9 the gallery drops the empty style.
-  if (size < 9) return makePatternInfo(createGrid(size), size, "british");
+  if (size < 9) return { ...makePatternInfo(createGrid(size), size, "british"), failed: true };
 
   // Longest allowed light scales with the grid; "sparse" grids (CJK / Russian,
   // which fill dense interlock poorly) get shorter words and higher black%.
@@ -567,7 +668,7 @@ export function generateBritishPattern(
     return makePatternInfo(grid, size, "british");
   }
 
-  return makePatternInfo(createGrid(size), size, "british");
+  return { ...makePatternInfo(createGrid(size), size, "british"), failed: true };
 }
 
 // --- Freeform style ---
@@ -585,6 +686,7 @@ export function generateFreeformPattern(size: number): PatternInfo {
 }
 
 function generateFreeformSymmetric(size: number): PatternInfo {
+  const maxLen = maxWordLength(size);
   const targetBlackPct = randomInt(25, 40) / 100;
   const targetBlacks = Math.round(size * size * targetBlackPct);
 
@@ -609,41 +711,24 @@ function generateFreeformSymmetric(size: number): PatternInfo {
       }
     }
 
-    // Break long runs
-    for (let breakAttempt = 0; breakAttempt < 50; breakAttempt++) {
-      const longest = findLongestRun(grid, size, MAX_WORD_LENGTH);
-      if (!longest) break;
-      const validPositions = longest.cells.filter((_, i) =>
-        i >= MIN_WORD_LENGTH && i <= longest.length - MIN_WORD_LENGTH - 1
-      );
-      shuffle(validPositions);
-      let placed = false;
-      for (const [r, c] of validPositions) {
-        setBlackSymmetric(grid, r, c, size);
-        if (checkMinWordLength(grid, size) && isConnected(grid, size)) {
-          placed = true;
-          break;
-        }
-        clearCellSymmetric(grid, r, c, size);
-      }
-      if (!placed) break;
-    }
+    breakLongRuns(grid, size, maxLen, true, attempt >= STUB_CUTS_AFTER);
 
     const blacks = countBlacks(grid, size);
     if (
       blacks >= targetBlacks - 8 &&
       isConnected(grid, size) &&
       checkMinWordLength(grid, size) &&
-      !findLongestRun(grid, size, MAX_WORD_LENGTH)
+      !findLongestRun(grid, size, maxLen)
     ) {
       return makePatternInfo(grid, size, "freeform");
     }
   }
 
-  return makePatternInfo(createGrid(size), size, "freeform");
+  return { ...makePatternInfo(createGrid(size), size, "freeform"), failed: true };
 }
 
 function generateFreeformAsymmetric(size: number): PatternInfo {
+  const maxLen = maxWordLength(size);
   const targetBlackPct = randomInt(28, 45) / 100;
   const targetBlacks = Math.round(size * size * targetBlackPct);
 
@@ -707,38 +792,20 @@ function generateFreeformAsymmetric(size: number): PatternInfo {
       }
     }
 
-    // Break long runs
-    for (let breakAttempt = 0; breakAttempt < 50; breakAttempt++) {
-      const longest = findLongestRun(grid, size, MAX_WORD_LENGTH);
-      if (!longest) break;
-      const validPositions = longest.cells.filter((_, i) =>
-        i >= MIN_WORD_LENGTH && i <= longest.length - MIN_WORD_LENGTH - 1
-      );
-      shuffle(validPositions);
-      let placed = false;
-      for (const [r, c] of validPositions) {
-        setBlackSingle(grid, r, c);
-        if (checkMinWordLength(grid, size) && isConnected(grid, size)) {
-          placed = true;
-          break;
-        }
-        clearCellSingle(grid, r, c);
-      }
-      if (!placed) break;
-    }
+    breakLongRuns(grid, size, maxLen, false, attempt >= STUB_CUTS_AFTER);
 
     const blacks = countBlacks(grid, size);
     if (
       blacks >= Math.floor(targetBlacks * 0.7) &&
       isConnected(grid, size) &&
       checkMinWordLength(grid, size) &&
-      !findLongestRun(grid, size, MAX_WORD_LENGTH)
+      !findLongestRun(grid, size, maxLen)
     ) {
       return makePatternInfo(grid, size, "freeform");
     }
   }
 
-  return makePatternInfo(createGrid(size), size, "freeform");
+  return { ...makePatternInfo(createGrid(size), size, "freeform"), failed: true };
 }
 
 // Keep backward compat

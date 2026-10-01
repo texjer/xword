@@ -145,6 +145,7 @@ describe("tools/list", () => {
 
     expect(names).toEqual(
       [
+        "build_grid",
         "create_puzzle",
         "delete_puzzle",
         "export_puzzle",
@@ -181,6 +182,7 @@ describe("tools/list", () => {
 
     expect(describe("fill_grid")).toMatch(/SPENDS one unit/);
     expect(describe("improve_fill")).toMatch(/SPENDS one unit/);
+    expect(describe("build_grid")).toMatch(/SPENDS one unit/);
     expect(describe("generate_clues")).toMatch(/MEMBERS ONLY/);
     expect(describe("generate_clues")).toMatch(/monthly AI-clue allowance/);
     // And the free ones say so, so a model has a reason to prefer them.
@@ -378,6 +380,27 @@ describe("tool calls", () => {
     expect(session.calls[0].body).toMatchObject({ locked: ["2,2"], max_time: 25 });
     expect(payloadOf(improved).grid).toEqual(FILLED_GRID);
     expect(textOf(improved)).toContain("Do not retry");
+
+    await session.close();
+  });
+
+  it("build_grid returns the grid with its entries, and says when nothing fit", async () => {
+    const session = await connect([
+      json({ grid: ["ネコ#", "#イヌ", "サ#ウ"], placed: ["ネコ"], missing: ["ウマ"] }),
+      json({ grid: null, placed: [], missing: [], reason: "no_solution" }),
+    ]);
+
+    const built = await session.client.callTool({
+      name: "build_grid",
+      arguments: { language: "ja", size: 7, theme_words: ["ネコ", "ウマ"] },
+    });
+    expect(session.calls[0].body).toEqual({ language: "ja", size: 7, theme_words: ["ネコ", "ウマ"] });
+    expect(payloadOf(built).entries).toBeDefined();
+    expect(textOf(built)).toContain("placed 1 of 2");
+
+    const failed = await session.client.callTool({ name: "build_grid", arguments: { language: "ko" } });
+    expect(session.calls[1].body).toEqual({ language: "ko", size: 11, theme_words: [] });
+    expect(textOf(failed)).toContain("No grid fit");
 
     await session.close();
   });

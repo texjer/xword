@@ -191,6 +191,16 @@ describe("CrosswordClient — one call per operation", () => {
     expect(calls[0].body).toMatchObject({ locked: ["0,0"] });
   });
 
+  it("buildGrid", async () => {
+    const { client: c, calls } = client([
+      json({ grid: ["ネコ#", "#イヌ", "サ#ウ"], placed: ["ネコ"], missing: [] }),
+    ]);
+    const result = await c.buildGrid({ language: "ja", size: 7, theme_words: ["ねこ"] });
+    expect(result.placed).toEqual(["ネコ"]);
+    expect(calls[0].url).toBe(`${BASE}/fill/build`);
+    expect(calls[0].body).toEqual({ language: "ja", size: 7, theme_words: ["ねこ"] });
+  });
+
   it("cancelFill sends snake_case session_id", async () => {
     const { client: c, calls } = client([json({ cancelled: true, sessionId: "sess-1" })]);
     const result = await c.cancelFill("sess-1");
