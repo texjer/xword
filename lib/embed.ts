@@ -55,7 +55,10 @@ export type EmbedMessage =
   | { event: "solved"; id: string }
   /** Posted once the frame is listening for host messages (only when its
    * scheme is `auto`); embed.js answers with `scheme`. */
-  | { event: "ready"; id: string };
+  | { event: "ready"; id: string }
+  /** The solver picked light/dark with the frame's own toggle. embed.js
+   * repaints the snippet's card to match and stops following the host. */
+  | { event: "theme"; id: string; scheme: "light" | "dark" };
 
 /** Host page → frame. embed.js sends these; nothing else is expected. */
 export type EmbedHostMessage = { event: "scheme"; scheme: "light" | "dark" };
@@ -170,11 +173,36 @@ export function embedCaption({ origin, options, madeWith, siteName }: EmbedCapti
     "{{link}}",
     `<a href="${origin}/" style="color:inherit;text-decoration:none;font-weight:600">${escapeHtml(siteName)}</a>`
   );
-  return `<p style="margin:0.5em 0 0;text-align:center;font-size:0.8em;line-height:1.4;color:inherit;opacity:0.75">${credit}</p>`;
+  // Colour comes from the card (`embedCardStyle`), which embed.js repaints
+  // for the detected scheme — so inherit, never a literal here.
+  return `<p style="margin:0;padding:10px 16px 14px;text-align:center;font-size:0.8em;line-height:1.4;color:inherit">${credit}</p>`;
 }
 
 /**
- * The paste-ready snippet: iframe + resize/scheme script + the caption.
+ * The card around the iframe and caption: the frame's own canvas colour
+ * (globals.css `--canvas-subtle` as overridden for `.puzzle-embed`), a hairline (`--line-subtle`) and the
+ * caption's text colour (`--muted`), per scheme. The snippet inlines the
+ * values because it's pasted into pages that don't have our stylesheet;
+ * `public/embed.js` applies the other set when it works out the host page is
+ * the other scheme. Keep these three in step with globals.css.
+ */
+export const EMBED_CARD_COLORS = {
+  light: { background: "#fafafa", border: "#e5e7eb", text: "#6b7280" },
+  dark: { background: "#17181c", border: "#374151", text: "#9ca3af" },
+} as const;
+
+/** Marker attribute embed.js looks for on the iframe's parent to repaint it. */
+export const EMBED_CARD_ATTR = "data-crossword-embed";
+
+export function embedCardStyle(scheme: EmbedScheme): string {
+  const c = EMBED_CARD_COLORS[scheme === "dark" ? "dark" : "light"];
+  return `background:${c.background};border:1px solid ${c.border};border-radius:12px;overflow:hidden;color:${c.text}`;
+}
+
+/**
+ * The paste-ready snippet: the card (iframe + caption) and the resize/scheme
+ * script. The caption is real HTML in the host page rather than part of the
+ * frame, so the credit is a link on their page, not ours.
  */
 export function embedSnippet({
   origin,
@@ -192,9 +220,11 @@ export function embedSnippet({
   const src = embedUrl(origin, embedPath, caption.options, key);
   const title = escapeHtml(puzzleTitle);
   return [
-    `<iframe src="${src}" title="${title}" width="100%" height="${embedFallbackHeight(size, caption.options.scale)}" style="border:0;max-width:100%;display:block" loading="lazy" allow="clipboard-write"></iframe>`,
-    `<script async src="${origin}/embed.js"></script>`,
+    `<div ${EMBED_CARD_ATTR} style="${embedCardStyle(caption.options.scheme)}">`,
+    `<iframe src="${src}" title="${title}" width="100%" height="${embedFallbackHeight(size, caption.options.scale)}" style="border:0;max-width:100%;display:block" loading="lazy" allow="clipboard-write; fullscreen" allowfullscreen></iframe>`,
     embedCaption({ origin, ...caption }),
+    `</div>`,
+    `<script async src="${origin}/embed.js"></script>`,
   ]
     .filter(Boolean)
     .join("\n");

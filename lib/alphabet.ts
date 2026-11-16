@@ -233,7 +233,8 @@ export const AVAILABLE_PUZZLE_LANGUAGES = Object.values(ALPHABET_CONFIGS).filter
 );
 
 export function isPuzzleLanguage(value: unknown): value is PuzzleLanguage {
-  return typeof value === "string" && value in ALPHABET_CONFIGS;
+  // Own keys only: `in` would also accept "constructor", "toString", "__proto__".
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(ALPHABET_CONFIGS, value);
 }
 
 function foldCharacter(char: string, config: AlphabetConfig): string {

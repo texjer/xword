@@ -31,7 +31,7 @@ Global options
 `;
 
 exports[`help output > top-level help is stable 1`] = `
-"xword 0.1.5 — the Crossword Generator CLI
+"xword 0.1.6 — the Crossword Generator CLI
 
 Usage
   xword <command> [args] [--flags]

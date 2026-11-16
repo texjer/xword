@@ -25,6 +25,19 @@ function maxWordLength(size: number): number {
 }
 const LARGE_GRID_EXTRA = 1;
 
+// Black-square share the American generator aims for above 15×15, the same
+// table as backend/scripts/generate_patterns.py. Every size over 15 used to
+// get a flat 72–82 blacks — 17% of a 21×21, 15% of a 23×23 — and grids that
+// open don't fill: swept at 21×21, 21–23% black filled 2 of 8, 27–29% 8 of 8.
+// Theme-word carves start from these bases, so the same number decided
+// whether a large themed grid could be filled at all.
+const LARGE_BLACK_SHARE: Record<number, [number, number]> = {
+  17: [0.21, 0.23],
+  19: [0.23, 0.26],
+  21: [0.25, 0.28],
+  23: [0.25, 0.28],
+};
+
 // Attempts that must fail with clean cuts before breakLongRuns may black out stubs.
 const STUB_CUTS_AFTER = 10;
 const MAX_STUB_BLACKS = 6;
@@ -430,7 +443,12 @@ function clearCellSingle(grid: CellState[][], r: number, c: number) {
 // 180° rotational symmetry, every cell checked, ~20-25% black
 
 export function generateAmericanPattern(size: number): PatternInfo {
-  const targetBlacks = size <= 5 ? randomInt(0, 4) : size <= 11 ? randomInt(20, 26) : size <= 15 ? randomInt(44, 50) : randomInt(72, 82);
+  const share = LARGE_BLACK_SHARE[size] ?? LARGE_BLACK_SHARE[23];
+  const targetBlacks =
+    size <= 5 ? randomInt(0, 4)
+    : size <= 11 ? randomInt(20, 26)
+    : size <= 15 ? randomInt(44, 50)
+    : randomInt(Math.round(size * size * share[0]), Math.round(size * size * share[1]));
   const maxLongWords = size <= 11 ? 999 : size <= 15 ? 20 : Math.round(20 * (size * size) / 225);
   const maxLen = maxWordLength(size);
 
@@ -675,8 +693,10 @@ export function generateBritishPattern(
 // Two variants: symmetric (180° rotation) and asymmetric (no symmetry).
 // Fewer constraints, easier to fill. Can have creative shapes.
 
-export function generateFreeformPattern(size: number): PatternInfo {
-  const useSymmetry = Math.random() < 0.5;
+// `symmetric: true` always takes the 180°-symmetric variant (the New Puzzle
+// dialog's Symmetrical box); left unset it's a coin flip between the two.
+export function generateFreeformPattern(size: number, symmetric?: boolean): PatternInfo {
+  const useSymmetry = symmetric ?? Math.random() < 0.5;
 
   if (useSymmetry) {
     return generateFreeformSymmetric(size);

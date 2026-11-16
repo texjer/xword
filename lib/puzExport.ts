@@ -45,6 +45,31 @@ interface PuzInput {
   size: number;
   cells: CellState[][];
   clues: { across: Record<number, string>; down: Record<number, string> };
+  /** "r,c" keys of circled squares, written as the GEXT extra section. */
+  circles?: readonly string[];
+}
+
+// GEXT flag for a circled square. The section is one byte per square in the
+// board order, after the notes: "GEXT", uint16 length, uint16 checksum of the
+// data, the data, then a NUL. Readers that don't know it skip it.
+const GEXT_CIRCLED = 0x80;
+
+function gextSection(width: number, height: number, cells: CellState[][], circles: readonly string[]): Uint8Array | null {
+  const data = new Uint8Array(width * height);
+  for (const key of circles) {
+    const [r, c] = key.split(",").map(Number);
+    if (r >= 0 && r < height && c >= 0 && c < width && cells[r]?.[c]?.type === "white") {
+      data[r * width + c] = GEXT_CIRCLED;
+    }
+  }
+  if (!data.some((b) => b)) return null;
+  const out = new Uint8Array(8 + data.length + 1);
+  out.set([0x47, 0x45, 0x58, 0x54], 0); // "GEXT"
+  const view = new DataView(out.buffer);
+  view.setUint16(4, data.length, true);
+  view.setUint16(6, checksumRegion(data, 0), true);
+  out.set(data, 8);
+  return out;
 }
 
 function buildClueList(
@@ -84,7 +109,7 @@ function buildClueList(
 }
 
 export function exportPuz(input: PuzInput): Uint8Array {
-  const { title, author, size, cells, clues } = input;
+  const { title, author, size, cells, clues, circles } = input;
   const width = size;
   const height = size;
   const boardSize = width * height;
@@ -114,7 +139,8 @@ export function exportPuz(input: PuzInput): Uint8Array {
   const clueList = buildClueList(size, cells, clues);
   const numClues = clueList.length;
 
-  const titleBytes = textToBytes(title || "Untitled");
+  const writtenTitle = title || "Untitled";
+  const titleBytes = textToBytes(writtenTitle);
   const authorBytes = textToBytes(author || "");
   const copyrightBytes = textToBytes("");
   const notesBytes = textToBytes("");
@@ -128,6 +154,8 @@ export function exportPuz(input: PuzInput): Uint8Array {
   totalSize += copyrightBytes.length;
   for (const cb of clueBytes) totalSize += cb.length;
   totalSize += notesBytes.length;
+  const gext = circles?.length ? gextSection(width, height, cells, circles) : null;
+  if (gext) totalSize += gext.length;
 
   const buf = new Uint8Array(totalSize);
   const view = new DataView(buf.buffer);
@@ -167,6 +195,9 @@ export function exportPuz(input: PuzInput): Uint8Array {
     offset += cb.length;
   }
   buf.set(notesBytes, offset);
+  offset += notesBytes.length;
+  // Extra sections sit outside every checksum above.
+  if (gext) buf.set(gext, offset);
 
   // Compute checksums
   const cibCksum = checksumRegion(buf.subarray(0x2c, 0x34), 0);
@@ -177,7 +208,10 @@ export function exportPuz(input: PuzInput): Uint8Array {
   cksum = checksumRegion(playerState, cksum);
 
   // String checksums: title, author, copyright, clues, notes (with null terminators for non-empty)
-  if (title) cksum = checksumRegion(titleBytes, cksum);
+  // The title written is "Untitled" when the puzzle has none, so the checksums
+  // must cover that string; testing the raw (empty) title skipped it and every
+  // untitled export failed the readers' checksum.
+  if (writtenTitle) cksum = checksumRegion(titleBytes, cksum);
   if (author) cksum = checksumRegion(authorBytes, cksum);
   cksum = checksumRegion(copyrightBytes.subarray(0, 0), cksum); // empty copyright
   for (const cb of clueBytes) {
@@ -191,7 +225,7 @@ export function exportPuz(input: PuzInput): Uint8Array {
   const gridCksum = checksumRegion(playerState, 0);
 
   let partialStrCksum = 0;
-  if (title) partialStrCksum = checksumRegion(titleBytes, partialStrCksum);
+  if (writtenTitle) partialStrCksum = checksumRegion(titleBytes, partialStrCksum);
   if (author) partialStrCksum = checksumRegion(authorBytes, partialStrCksum);
   for (const cb of clueBytes) {
     partialStrCksum = checksumRegion(cb.subarray(0, cb.length - 1), partialStrCksum);

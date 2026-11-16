@@ -4,7 +4,7 @@
  */
 import { COMMANDS, GLOBAL_FLAGS, type CommandSpec, type FlagSpec } from "./cliArgs.js";
 
-export const VERSION = "0.1.5";
+export const VERSION = "0.1.6";
 
 function flagLine(name: string, spec: FlagSpec): string {
   const rendered =
